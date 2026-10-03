@@ -23,7 +23,7 @@
 #>
 [CmdletBinding(PositionalBinding = $false)]
 param(
-    [ValidateSet('sim', 'claude')][string]$Backend,
+    [ValidateSet('sim', 'claude', 'codex')][string]$Backend,
     [string[]]$Repo,
     [Alias('Profile')][string]$ForemanProfile,
     # -Showcase [busy|late]: a switch with an optional positional value

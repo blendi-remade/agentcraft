@@ -99,6 +99,18 @@ so launch scripts can find it; `<home>/foreman.json` holds the same for the firs
 it exits, another live profile takes its place). A second Foreman on a profile that is already
 running is refused (two would both write its `state.json`).
 
+## Codex backend (experimental)
+
+Use `--backend codex` with a separately installed and authenticated Codex CLI.
+The default profile is `codex`; Claude remains the default backend. The Codex adapter
+shares the orchestration below, with its own app-server transport, thread IDs and
+configuration under `codex` in `config.json`.
+
+See [Codex setup and limitations](../docs/codex.md), including supported CLI version,
+authentication, sandbox differences and the manual smoke-test checklist. Automated
+tests do not perform paid inference. `--max-budget` is rejected because Codex does
+not supply a per-turn dollar budget control to this adapter.
+
 ## How the claude backend works
 
 1. **Plan** (lead, read-only in your checkout): explores with Read/Grep/Glob, writes `Plan: ...` to

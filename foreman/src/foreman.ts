@@ -32,7 +32,7 @@ import { setUserName, userName } from './user.js';
 import { truncate } from './util/text.js';
 
 export interface Backend {
-  readonly name: 'sim' | 'claude';
+  readonly name: 'sim' | 'claude' | 'codex';
   /** Called once after the core is ready (and after restart: resume work). */
   start(): Promise<void>;
   stop(): Promise<void>;

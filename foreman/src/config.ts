@@ -38,6 +38,12 @@ export interface ClaudeConfig {
   useClaudeLogin: boolean;
 }
 
+/** Codex uses the CLI's selected model when no model override is supplied. */
+export interface CodexConfig extends Omit<ClaudeConfig, 'useClaudeLogin' | 'maxBudgetUsdPerTurn'> {
+  /** Codex CLI executable (an argument-free path, never a shell command). */
+  executable: string;
+}
+
 export type ShowcaseCheckpoint = 'showcase' | 'showcase-late';
 
 export interface SimConfig {
@@ -80,6 +86,7 @@ export interface Config {
   /** sign approved merge commits when the repo's own git config says commit.gpgsign=true */
   signMerges: boolean;
   claude: ClaudeConfig;
+  codex: CodexConfig;
   sim: SimConfig;
 }
 
@@ -123,6 +130,14 @@ function num(v: unknown, d: number): number {
   return Number.isFinite(n) ? n : d;
 }
 
+/** Codex limits must fail closed: malformed caps must not become a larger default. */
+function codexLimit(v: unknown, fallback: number, name: string): number {
+  if (v === undefined) return fallback;
+  const n = typeof v === 'number' ? v : typeof v === 'string' && v.trim() ? Number(v) : NaN;
+  if (!Number.isSafeInteger(n) || n < 1) throw new Error(`codex.${name} must be a positive integer`);
+  return n;
+}
+
 function bool(v: unknown, d: boolean): boolean {
   if (v === undefined) return d;
   if (typeof v === 'boolean') return v;
@@ -152,7 +167,7 @@ export const KNOWN_FLAGS = new Set([
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
-  'ambient',
+  'ambient', 'codex-path',
 ]);
 
 /**
@@ -173,13 +188,17 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
   checkArgs(flags, positional);
   const home = path.resolve(str(flags.home) ?? env.AGENTCRAFT_HOME ?? path.join(os.homedir(), '.agentcraft'));
   const file = readJson<Record<string, unknown>>(path.join(home, 'config.json')) ?? {};
-  const fileClaude = (file.claude ?? {}) as Record<string, unknown>;
+  let fileClaude = (file.claude ?? {}) as Record<string, unknown>;
+  let fileCodex = (file.codex ?? {}) as Record<string, unknown>;
   const fileSim = (file.sim ?? {}) as Record<string, unknown>;
   const pick = (k: string, envKey?: string): unknown => flags[k] ?? (envKey ? env[envKey] : undefined) ?? file[k];
 
   const backendRaw = String(pick('backend', 'AGENTCRAFT_BACKEND') ?? 'claude');
-  if (backendRaw !== 'sim' && backendRaw !== 'claude') throw new Error(`unknown backend "${backendRaw}" (use sim or claude)`);
+  if (backendRaw !== 'sim' && backendRaw !== 'claude' && backendRaw !== 'codex') throw new Error(`unknown backend "${backendRaw}" (use sim, claude or codex)`);
   const backend = backendRaw as BackendName;
+  if (backend === 'codex') fileClaude = {};
+  if (backend !== 'codex') fileCodex = {}; // Inactive provider settings must not break existing backends.
+  const codexCap = (v: unknown, fallback: number, name: string) => backend === 'codex' ? codexLimit(v, fallback, name) : num(v, fallback);
   const profile = str(pick('profile', 'AGENTCRAFT_PROFILE')) ?? backend;
   if (!/^[a-zA-Z0-9_-]+$/.test(profile)) throw new Error(`bad profile name "${profile}"`);
 
@@ -188,7 +207,12 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
   if (typeof repoFlag === 'string') repos.push(...repoFlag.split(',').map((s) => s.trim()).filter(Boolean));
   else if (Array.isArray(file.repos)) repos.push(...(file.repos as string[]));
 
-  const workersRaw = str(flags.workers) ?? env.AGENTCRAFT_WORKERS ?? (fileClaude.workers as string[] | string | undefined);
+  const fileTeam = backend === 'codex' ? fileCodex : fileClaude;
+  if (backend === 'codex' && (flags['max-budget'] !== undefined || fileCodex.maxBudgetUsdPerTurn !== undefined)) {
+    throw new Error('Codex does not support a per-turn USD budget; --max-budget is Claude-only');
+  }
+  if (backend === 'codex' && flags['use-claude-login'] !== undefined && bool(flags['use-claude-login'], false)) throw new Error('--use-claude-login is Claude-only; authenticate Codex with codex login');
+  const workersRaw = str(flags.workers) ?? env.AGENTCRAFT_WORKERS ?? (fileTeam.workers as string[] | string | undefined);
   const workers = Array.isArray(workersRaw)
     ? workersRaw
     : typeof workersRaw === 'string'
@@ -210,7 +234,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     goal: str(flags.goal),
     autostart: bool(flags.autostart, false) || !!str(flags.goal),
     reset: bool(flags.reset, false),
-    notify: bool(pick('notify', 'AGENTCRAFT_NOTIFY'), backend === 'claude'),
+    notify: bool(pick('notify', 'AGENTCRAFT_NOTIFY'), backend !== 'sim'),
     toastSilent: bool(pick('toast-silent', 'AGENTCRAFT_TOAST_SILENT'), false),
     debug: bool(pick('debug', 'AGENTCRAFT_DEBUG'), false),
     quiet: bool(flags.quiet, false),
@@ -219,7 +243,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     repoPollMs: Math.max(500, num(pick('repo-poll-ms'), 10_000)),
     mergeStyle: mergeStyle(pick('merge-style', 'AGENTCRAFT_MERGE_STYLE')),
     // the sim answers merges unattended (screenshot QA, --auto-answer): never sign there
-    signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend === 'claude'),
+    signMerges: bool(pick('sign-merges', 'AGENTCRAFT_SIGN_MERGES'), backend !== 'sim'),
     claude: {
       leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileClaude.leadModel) ?? 'opus',
       workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileClaude.workerModel) ?? 'sonnet',
@@ -235,6 +259,20 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
     },
+    codex: {
+      executable: str(flags['codex-path']) ?? str(env.AGENTCRAFT_CODEX_PATH) ?? str(fileCodex.executable) ?? 'codex',
+      leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileCodex.leadModel) ?? '',
+      workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileCodex.workerModel) ?? '',
+      effort: effort(flags.effort ?? fileCodex.effort, 'medium'),
+      leadEffort: effort(flags['lead-effort'] ?? flags.effort ?? fileCodex.leadEffort, 'medium'),
+      maxTurnsLead: codexCap(flags['max-turns-lead'] ?? flags['max-turns'] ?? fileCodex.maxTurnsLead, 40, 'maxTurnsLead'),
+      maxTurnsWorker: codexCap(flags['max-turns-worker'] ?? flags['max-turns'] ?? fileCodex.maxTurnsWorker, 80, 'maxTurnsWorker'),
+      maxConcurrent: codexCap(flags['max-concurrent'] ?? fileCodex.maxConcurrent, 3, 'maxConcurrent'),
+      workers,
+      ciCommand: str(flags.ci) ?? str(fileCodex.ciCommand),
+      resumeOnStart: bool(flags.resume ?? fileCodex.resumeOnStart, true),
+      leadReview: bool(flags['lead-review'] ?? fileCodex.leadReview, true),
+    },
     sim: {
       speed: Math.max(0.05, num(flags.speed ?? env.AGENTCRAFT_SIM_SPEED ?? fileSim.speed, 1)),
       seed: num(flags.seed ?? fileSim.seed, 7),
@@ -244,6 +282,9 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       ambient: bool(flags.ambient ?? fileSim.ambient, true),
     },
   };
+  if (backend === 'codex' && [cfg.codex.effort, cfg.codex.leadEffort].includes('max')) {
+    throw new Error('Codex effort must be low, medium, high or xhigh (max is Claude-only)');
+  }
   if (cfg.sim.showcase) cfg.autostart = true;
   return cfg;
 }
@@ -252,7 +293,7 @@ export const HELP = `AgentCraft Foreman ${FOREMAN_VERSION}
 
 usage: npm run start -- [options]
 
-  --backend sim|claude     agent backend (default: claude)
+  --backend sim|claude|codex     agent backend (default: claude)
   --repo <path>[,<path>]   register local git repo(s) at start (sim: defaults to a fresh sandbox/sim-demo)
   --goal "<text>"          submit a goal right away
   --port <n>               WebSocket port (default 7878, env AGENTCRAFT_PORT)
@@ -261,13 +302,13 @@ usage: npm run start -- [options]
                            env AGENTCRAFT_USER_NAME, config.json "userName")
   --profile <name>         state profile under home (default: backend name)
   --reset                  wipe this profile's state first (sim: also recreates the demo repo)
-  --notify / --no-notify   desktop notification when a decision waits (default: on for claude, off for sim)
+  --notify / --no-notify   desktop notification when a decision waits (default: on for real backends, off for sim)
   --toast-silent           toasts without sound
   --repo-poll-ms <n>       how often repo checkouts are checked for head/dirty changes (default 10000)
   --merge-style merge|squash  approved merges: merge commit keeping the agents' commits (default),
                            or one squashed commit authored by you
   --no-sign-merges         never sign approved merge commits (default: signed when your git
-                           config has commit.gpgsign=true; claude backend only)
+                           config has commit.gpgsign=true; real backends only)
   --debug                  verbose logging
 
  sim backend
@@ -293,4 +334,12 @@ usage: npm run start -- [options]
   --ci "<cmd>"             test command run after each task (default: detected, e.g. npm test)
   --no-lead-review         skip the lead's review turn before merge decisions
   --no-resume              do not resume interrupted sessions on start
+
+ codex backend (experimental app-server integration)
+  auth: run codex login first; uses your existing Codex authentication
+  --codex-path <path>      Codex executable (default codex; env AGENTCRAFT_CODEX_PATH)
+  --model / --lead-model / --worker-model  (default: Codex's configured model)
+  --effort low|medium|high|xhigh           (default medium)
+  --max-turns caps completed work steps for Codex, not provider API turns.
+  Team, CI, review and resume flags above also apply. --max-budget is unsupported.
 `;

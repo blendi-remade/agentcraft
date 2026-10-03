@@ -54,7 +54,7 @@ If the game of this checkout is already running it is reused (one client per che
 
 | parameter | default | |
 | --- | --- | --- |
-| `-Backend sim\|claude` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
+| `-Backend sim\|claude\|codex` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
 | `-Repo <path>[,<path>]` | | registered at start, or sent as `repo.add` to a running Foreman |
 | `-Profile <name>` | backend name; `showcase` / `showcase-late` | state lives in `<home>/<profile>` |
 | `-Showcase [busy\|late]` | | hold a static scripted state (QA screenshots); always a fresh (`--reset`) profile |
@@ -106,3 +106,11 @@ Screenshot QA (scene format, anchor contract, judging): [docs/QA.md](../docs/QA.
 | `record.mjs`, `shots/*.json` | real-time shot player for screen recording (`dev.play`: camera paths, timed Foreman injections, typing); format in `shots/README.md` |
 | `qa.mjs`, `lib/contactsheet.mjs`, `scenes/qa.json` | QA suite, contact sheet (pngjs) |
 | `scenes/phase1.json`, `scenes/qa-selftest.json` | Phase 1 proof scene, runner self-test |
+
+## Codex backend (experimental)
+
+Both launchers accept the optional Codex backend: `tools\launch.ps1 -Backend codex
+-Repo C:\path\to\repo` on Windows, or `node tools/mac.mjs launch --backend codex
+--repo /path/to/repo` on macOS. Install and authenticate Codex separately first.
+Its default profile is `codex`; stop that profile explicitly on macOS with
+`node tools/mac.mjs stop --profile codex`. See [Codex setup and limitations](../docs/codex.md).

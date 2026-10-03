@@ -61,12 +61,12 @@ export type NotifyLevel = z.infer<typeof NotifyLevel>;
 export const WorktreeStatus = z.enum(['active', 'merged', 'abandoned']);
 export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
-export const BackendName = z.enum(['sim', 'claude']);
+export const BackendName = z.enum(['sim', 'claude', 'codex']);
 export type BackendName = z.infer<typeof BackendName>;
 
 export const AuthStatus = z
   .enum(['ok', 'failed', 'unknown', 'checking'])
-  .describe('`failed` must be shown loudly (in-world banner): the claude backend cannot run.');
+  .describe('`failed` must be shown loudly (in-world banner): the selected backend cannot run.');
 export type AuthStatus = z.infer<typeof AuthStatus>;
 
 const Id = z.string().min(1);

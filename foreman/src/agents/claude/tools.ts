@@ -60,7 +60,9 @@ export function toolNames(role: 'lead' | 'worker'): string[] {
   return [...common, ...lead].map((n) => `mcp__${MCP_SERVER}__${n}`);
 }
 
-export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'worker', hooks: ToolHooks, turn?: TurnHandle): McpSdkServerConfigWithInstance {
+// SDK-compatible definitions are reusable by other providers without creating an MCP server.
+// eslint-disable-next-line @typescript-eslint/no-explicit-any
+export function buildTools(fm: Foreman, agentId: string, role: 'lead' | 'worker', hooks: ToolHooks, turn?: TurnHandle): Array<SdkMcpToolDefinition<any>> {
   const withInbox = (text: string, isError = false): ToolResult => {
     const inbox = fm.bus.inbox(agentId, { markRead: true });
     const extra = inbox.length ? `\n\n[New messages]\n${formatInbox(inbox, (id) => fm.nameOf(id))}` : '';
@@ -300,6 +302,11 @@ export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'wor
     t.handler = async (args, extra) => (turn?.signal.aborted ? fail('your turn was stopped; nothing was changed') : inner(args, extra));
   }
 
+  return tools;
+}
+
+export function buildMcpServer(fm: Foreman, agentId: string, role: 'lead' | 'worker', hooks: ToolHooks, turn?: TurnHandle): McpSdkServerConfigWithInstance {
+  const tools = buildTools(fm, agentId, role, hooks, turn);
   // alwaysLoad: never hide our tools behind tool search
   return createSdkMcpServer({ name: MCP_SERVER, version: '0.1.0', tools, alwaysLoad: true, instructions: `AgentCraft team tools: coordinate with teammates, ask ${userName()}, keep memory and the task board up to date.` });
 }

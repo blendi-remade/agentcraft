@@ -26,8 +26,8 @@
 - <a id="feedkind"></a>**FeedKind**: `goal`, `plan`, `task`, `message`, `decision`, `merge`, `ci`, `memory`, `system`, `error`, `user`
 - <a id="notifylevel"></a>**NotifyLevel**: `info`, `warn`, `need_user`
 - <a id="worktreestatus"></a>**WorktreeStatus**: `active`, `merged`, `abandoned`
-- <a id="backendname"></a>**BackendName**: `sim`, `claude`
-- <a id="authstatus"></a>**AuthStatus**: `ok`, `failed`, `unknown`, `checking` - `failed` must be shown loudly (in-world banner): the claude backend cannot run.
+- <a id="backendname"></a>**BackendName**: `sim`, `claude`, `codex`
+- <a id="authstatus"></a>**AuthStatus**: `ok`, `failed`, `unknown`, `checking` - `failed` must be shown loudly (in-world banner): the selected backend cannot run.
 
 Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; permission decisions use `Allow once`, `Always allow for this agent`, `Deny`. Question decisions use agent-supplied options (may be empty: free text).
 
@@ -177,7 +177,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | --- | --- | --- | --- |
 | `version` | string | yes |  |
 | `backend` | [BackendName](#backendname) | yes |  |
-| `auth` | [AuthStatus](#authstatus) | yes | `failed` must be shown loudly (in-world banner): the claude backend cannot run. |
+| `auth` | [AuthStatus](#authstatus) | yes | `failed` must be shown loudly (in-world banner): the selected backend cannot run. |
 | `message` | string | no | human-readable backend/auth status for the banner |
 | `account` | string | no | e.g. organization / plan when auth ok |
 | `speed` | number | no | sim: speed multiplier |

@@ -20,7 +20,7 @@ import net.minecraft.util.Util;
 
 /**
  * Small Foreman status pill in the top-right corner, and a loud banner at the top centre when the
- * claude backend cannot authenticate.
+ * selected backend cannot authenticate.
  * <ul>
  *   <li>connected: quiet ink pill, teal dot, "Foreman · sim" (or the claude account); fades to a
  *       lower opacity after a few seconds;</li>
@@ -68,7 +68,7 @@ public final class ConnectionBanner implements HudElement {
 		} else if (link.synced()) {
 			dot = fs != null && fs.auth() == AuthStatus.FAILED ? "error" : fs != null && fs.auth() == AuthStatus.CHECKING ? "thinking" : "working";
 			title = "Foreman · " + backendLabel(fs);
-			if (fs != null && fs.backend() == BackendName.CLAUDE && fs.account() != null) {
+			if (fs != null && (fs.backend() == BackendName.CLAUDE || fs.backend() == BackendName.CODEX) && fs.account() != null) {
 				detail = fs.account();
 			}
 			if (now - link.sinceMs() > FADE_AFTER_MS) {
@@ -98,6 +98,7 @@ public final class ConnectionBanner implements HudElement {
 		return switch (fs.backend()) {
 			case SIM -> fs.speed() != null && fs.speed() != 1.0 ? "sim ×" + trim(fs.speed()) : "sim";
 			case CLAUDE -> "claude";
+			case CODEX -> "codex";
 			default -> fs.backend().wire();
 		};
 	}
@@ -131,9 +132,16 @@ public final class ConnectionBanner implements HudElement {
 		}
 	}
 
+	/** Shared with GoalBar so its offset matches the rendered banner. */
+	static String authMessage(ForemanStatus fs) {
+		return fs.message() != null ? fs.message() : fs.backend() == BackendName.CODEX
+			? "run `codex login`, then restart the Foreman"
+			: "run `claude` and /login, then restart the Foreman";
+	}
+
 	private static void drawAuthBanner(GuiGraphicsExtractor g, Font font, ForemanStatus fs) {
-		String head = "Claude backend can't authenticate";
-		String msg = fs.message() != null ? fs.message() : "run `claude` and /login, then restart the Foreman";
+		String head = fs.backend() == BackendName.CODEX ? "Codex backend can't authenticate" : "Claude backend can't authenticate";
+		String msg = authMessage(fs);
 		int maxW = Math.min(360, g.guiWidth() - 40);
 		var lines = TextUtil.wrap(font, msg, maxW - 34);
 		Kit.Padding p = Kit.padding("panel_paper");
