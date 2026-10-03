@@ -148,7 +148,8 @@ back. Six features landed in the repo with its tests passing.
 
 ## Safe on real repos
 
-AgentCraft is built to point at code you care about.
+AgentCraft is built to point at code you care about. The guarantees below describe the
+Claude backend; the experimental Codex backend has [additional sandbox limitations](docs/codex.md).
 
 - **Worktrees, always.** Every task runs in its own git worktree on `agentcraft/<agent>/<task>`. Your
   checkout is never touched by an agent.
@@ -215,6 +216,20 @@ the first time; in an older world, rebuild it with `/agentcraft hq`.
 **Your name.** The agents call you by your OS user name. Change it with
 `-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or `{"userName": "Sam"}` in
 `~/.agentcraft/config.json`.
+
+<br>
+
+## Codex (experimental)
+
+An optional Codex backend uses the official Codex app-server while retaining the task
+board, worktrees, review and user-approved merges. Claude remains the default.
+Install and authenticate Codex separately, then pass `--backend codex` to the Foreman
+or macOS launcher (`-Backend codex` on Windows).
+
+See [Codex setup, limitations and verification](docs/codex.md) before using it on a real
+repository. This integration uses an experimental protocol; live-model and in-game
+behavior need a maintainer smoke test. Codex usage is billed or limited through your
+Codex account; `--max-budget` is not supported.
 
 <br>
 

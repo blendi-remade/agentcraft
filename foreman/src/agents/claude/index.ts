@@ -1,6 +1,6 @@
-// Claude backend: real Claude Agent SDK sessions for the lead and workers.
-//
-// Each agent processes a queue of jobs, one SDK `query()` turn per job:
+// Shared real-agent orchestration. Claude is the default provider; an injected driver
+// supplies Codex turns without duplicating scheduling, review or process lifecycle.
+// Each agent processes a queue of jobs, one provider turn per job:
 //   plan    lead explores the repo (read-only), writes the plan, creates tasks
 //   work    worker implements a task in its own git worktree
 //   review  lead reviews a finished task (diff + CI) -> request_merge or changes
@@ -20,8 +20,8 @@
 // committed on its branch. The next worker's worktree then starts from that branch.
 import { spawn, type ChildProcess } from 'node:child_process';
 import path from 'node:path';
-import { query, type CanUseTool, type Options, type PermissionResult } from '@anthropic-ai/claude-agent-sdk';
-import type { ClaudeConfig } from '../../config.js';
+import { query, type Options } from '@anthropic-ai/claude-agent-sdk';
+import type { ClaudeConfig, CodexConfig } from '../../config.js';
 import { FOREMAN_VERSION } from '../../config.js';
 import { ClientError, type Backend, type Foreman } from '../../foreman.js';
 import { withGitSafety } from '../../gitsafety.js';
@@ -37,8 +37,9 @@ import { truncate } from '../../util/text.js';
 import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystemPrompt, workPrompt } from './prompts.js';
 import { detectApiAuth, NO_API_AUTH_MESSAGE, withAuthMode } from './auth.js';
 import { StreamMapper, type TurnStats } from './stream.js';
-import { buildMcpServer, MCP_SERVER, type ToolHooks, type TurnHandle } from './tools.js';
+import { buildMcpServer, buildTools, MCP_SERVER, type ToolHooks, type TurnHandle } from './tools.js';
 import { userName } from '../../user.js';
+import type { AgentDriver, DriverPermission, DriverSpawnOptions } from '../driver.js';
 
 type JobKind = 'plan' | 'work' | 'review' | 'followup';
 type AbortReason = 'pause' | 'stop' | 'shutdown' | 'cancel' | 'timeout';
@@ -120,6 +121,8 @@ export function agentEnv(base: NodeJS.ProcessEnv = process.env, who: { agentId?:
 }
 
 export interface ClaudeBackendOptions {
+  /** Alternate turn provider; orchestration, permissions and lifecycle stay shared. */
+  driver?: AgentDriver;
   /** injectable for tests */
   queryFn?: typeof query;
   /** skip the startup auth probe (tests) */
@@ -127,7 +130,7 @@ export interface ClaudeBackendOptions {
 }
 
 export class ClaudeBackend implements Backend {
-  readonly name = 'claude' as const;
+  readonly name: 'claude' | 'codex';
   private queues = new Map<string, Job[]>();
   private running = new Map<string, Running>();
   private pausedJobs = new Map<string, Job>();
@@ -151,9 +154,10 @@ export class ClaudeBackend implements Backend {
 
   constructor(
     private fm: Foreman,
-    private cfg: ClaudeConfig,
+    private cfg: ClaudeConfig | CodexConfig,
     private opts: ClaudeBackendOptions = {},
   ) {
+    this.name = opts.driver?.name ?? 'claude';
     this.queryFn = opts.queryFn ?? query;
     this.hooks = {
       onReview: () => {
@@ -171,15 +175,25 @@ export class ClaudeBackend implements Backend {
 
   private get st(): ClaudeState {
     const b = this.fm.store.data.backend;
-    let s = b.claude as ClaudeState | undefined;
+    let s = b[this.name] as ClaudeState | undefined;
     if (!s) {
       s = { inflight: {}, ciFixes: {}, stopped: [] };
-      b.claude = s;
+      b[this.name] = s;
     }
     s.inflight ??= {};
     s.ciFixes ??= {};
     s.stopped ??= [];
     return s;
+  }
+
+  private get label(): string {
+    return this.opts.driver?.label ?? 'Claude';
+  }
+
+  /** Preserve existing Claude session keys; other providers never resume Claude sessions. */
+  private sessionKey(agentId: string, owner: string): string {
+    const key = `${agentId}:${owner}`;
+    return this.name === 'claude' ? key : `${this.name}:${key}`;
   }
 
   get team(): string[] {
@@ -208,7 +222,7 @@ export class ClaudeBackend implements Backend {
     }
     // the spend survives restarts: every session's cost is persisted, so the total is their sum
     const spent = Object.values(this.fm.store.data.sessions).reduce((sum, s) => sum + (s.costUsd || 0), 0);
-    if (spent > 0) this.fm.setStatus({ costUsd: Math.round(spent * 1000) / 1000 });
+    if (!this.opts.driver && spent > 0) this.fm.setStatus({ costUsd: Math.round(spent * 1000) / 1000 });
     await this.checkAuth();
     if (!this.cfg.resumeOnStart) {
       this.st.inflight = {};
@@ -223,16 +237,27 @@ export class ClaudeBackend implements Backend {
 
   async checkAuth(): Promise<boolean> {
     if (this.opts.skipAuthCheck) {
-      this.fm.setStatus({ auth: 'ok', message: `Claude (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
+      this.fm.setStatus({ auth: 'ok', message: `${this.label} (lead ${this.cfg.leadModel || 'default'}, workers ${this.cfg.workerModel || 'default'})` });
       return true;
+    }
+    if (this.opts.driver) {
+      try {
+        const ok = await this.opts.driver.checkAuth(this.fm);
+        this.authFailed = !ok;
+        if (!ok) this.markAuthFailed(this.fm.status.message ?? `${this.label} authentication failed.`);
+        return ok;
+      } catch (e) {
+        this.markAuthFailed(`${this.label} authentication check failed: ${(e as Error).message}`);
+        return false;
+      }
     }
     // API authentication by default; the claude.ai login only when explicitly opted into
     const api = detectApiAuth(process.env);
-    if (!this.cfg.useClaudeLogin && !api.ok) {
+    if (!('useClaudeLogin' in this.cfg && this.cfg.useClaudeLogin) && !api.ok) {
       this.markAuthFailed(NO_API_AUTH_MESSAGE);
       return false;
     }
-    this.fm.setStatus({ auth: 'checking', message: this.cfg.useClaudeLogin ? 'Checking Claude login...' : 'Checking Claude API access...' });
+    this.fm.setStatus({ auth: 'checking', message: ('useClaudeLogin' in this.cfg && this.cfg.useClaudeLogin) ? 'Checking Claude login...' : 'Checking Claude API access...' });
     async function* never(): AsyncGenerator<never> {
       await new Promise(() => undefined);
     }
@@ -241,16 +266,16 @@ export class ClaudeBackend implements Backend {
       const info = await Promise.race([q.accountInfo(), new Promise<never>((_, r) => setTimeout(() => r(new Error('timed out after 45s')), 45_000))]);
       const ok = !!(info.email || info.organization || (info.apiKeySource && info.apiKeySource !== 'none') || (info.tokenSource && info.tokenSource !== 'none') || (info.apiProvider && info.apiProvider !== 'firstParty'));
       if (!ok) throw new Error('not logged in');
-      const account = this.cfg.useClaudeLogin
+      const account = ('useClaudeLogin' in this.cfg && this.cfg.useClaudeLogin)
         ? [info.organization, info.subscriptionType].filter(Boolean).join(' · ') || info.apiProvider || 'ok'
         : [api.ok ? api.source : 'API', info.organization].filter(Boolean).join(' · ');
       this.authFailed = false;
-      this.fm.setStatus({ auth: 'ok', account, message: `Claude (lead ${this.cfg.leadModel}, workers ${this.cfg.workerModel})` });
+      this.fm.setStatus({ auth: 'ok', account, message: `${this.label} (lead ${this.cfg.leadModel || 'default'}, workers ${this.cfg.workerModel || 'default'})` });
       this.fm.log.info(`claude auth ok (${account})`);
       return true;
     } catch (e) {
       this.markAuthFailed(
-        this.cfg.useClaudeLogin
+        ('useClaudeLogin' in this.cfg && this.cfg.useClaudeLogin)
           ? `Claude login check failed: ${(e as Error).message}. Run \`claude\` and /login, then restart the Foreman. The sim backend still works.`
           : `Claude API check failed: ${(e as Error).message}. Check ANTHROPIC_API_KEY (or your cloud provider settings), then restart the Foreman. The sim backend still works.`,
       );
@@ -328,7 +353,7 @@ export class ClaudeBackend implements Backend {
         const repo = g.repoId ? this.fm.repos.get(g.repoId) : undefined;
         if (!repo) continue;
         this.fm.log.info(`recover: re-planning ${g.id}`);
-        this.enqueue({ kind: 'plan', agentId: LEAD, goalId: g.id, sessionKey: `${LEAD}:${g.id}`, fresh: !this.fm.store.data.sessions[`${LEAD}:${g.id}`]?.sessionId, prompt: planPrompt(this.fm, g, repo.path, repo.branch) });
+        this.enqueue({ kind: 'plan', agentId: LEAD, goalId: g.id, sessionKey: this.sessionKey(LEAD, g.id), fresh: !this.fm.store.data.sessions[this.sessionKey(LEAD, g.id)]?.sessionId, prompt: planPrompt(this.fm, g, repo.path, repo.branch) });
       }
     }
     // doing tasks whose worker is not working on them: back on the board (the session resumes)
@@ -462,7 +487,7 @@ export class ClaudeBackend implements Backend {
   async submitGoal(goal: Goal): Promise<void> {
     if (this.authFailed) {
       this.fm.setGoal(goal.id, { status: 'failed' });
-      throw new ClientError(`Claude is not available: ${this.fm.status.message ?? 'auth failed'}`);
+      throw new ClientError(`${this.label} is not available: ${this.fm.status.message ?? 'auth failed'}`);
     }
     const repo = this.fm.repos.require(goal.repoId!);
     if (this.isStopped(LEAD)) {
@@ -471,7 +496,7 @@ export class ClaudeBackend implements Backend {
     }
     for (const w of [LEAD, ...this.team]) if (!this.isStopped(w)) this.fm.setAgent(w, { active: true });
     this.fm.setAgent(LEAD, { state: 'thinking', station: 'meeting', activity: 'reading the goal', repoId: repo.id });
-    this.enqueue({ kind: 'plan', agentId: LEAD, goalId: goal.id, sessionKey: `${LEAD}:${goal.id}`, fresh: true, prompt: planPrompt(this.fm, goal, repo.path, repo.branch) });
+    this.enqueue({ kind: 'plan', agentId: LEAD, goalId: goal.id, sessionKey: this.sessionKey(LEAD, goal.id), fresh: true, prompt: planPrompt(this.fm, goal, repo.path, repo.branch) });
   }
 
   private promoteGoal(goal: Goal, why: string): void {
@@ -559,7 +584,7 @@ export class ClaudeBackend implements Backend {
     this.fm.setAgent(agentId, { taskId: t.id, repoId: t.repoId!, worktree: wt.id, state: 'thinking', station: 'desk', activity: `starting ${t.id}` });
     this.fm.bus.feed('task', `${this.fm.nameOf(agentId)} started ${t.id}: ${t.title}`, { agentId });
     const inbox = formatInbox(this.fm.bus.inbox(agentId, { markRead: true }), (id) => this.fm.nameOf(id));
-    this.enqueue({ kind: 'work', agentId, taskId: t.id, goalId: goal.id, sessionKey: `${agentId}:${t.id}`, fresh: !this.fm.store.data.sessions[`${agentId}:${t.id}`]?.sessionId, prompt: workPrompt(this.fm, t, goal, wt, inbox, continuesFrom) });
+    this.enqueue({ kind: 'work', agentId, taskId: t.id, goalId: goal.id, sessionKey: this.sessionKey(agentId, t.id), fresh: !this.fm.store.data.sessions[this.sessionKey(agentId, t.id)]?.sessionId, prompt: workPrompt(this.fm, t, goal, wt, inbox, continuesFrom) });
   }
 
   // ---- job queue ----------------------------------------------------------------------------
@@ -593,7 +618,7 @@ export class ClaudeBackend implements Backend {
   }
 
   private env(who: { agentId?: string; cwd?: string } = {}): Record<string, string | undefined> {
-    return withAuthMode(agentEnv(process.env, who), this.cfg.useClaudeLogin);
+    return withAuthMode(agentEnv(process.env, who), ('useClaudeLogin' in this.cfg && this.cfg.useClaudeLogin));
   }
 
   private cwdFor(job: Job): { cwd: string; role: 'lead' | 'worker' } {
@@ -608,8 +633,9 @@ export class ClaudeBackend implements Backend {
     return { cwd: this.fm.repos.requireWorktree(t.repoId, t.worktree).path, role: 'worker' };
   }
 
-  private canUseTool(agentId: string, role: 'lead' | 'worker', cwd: string, turn: TurnHandle): CanUseTool {
-    return async (toolName, input, opts): Promise<PermissionResult> => {
+  private canUseTool(agentId: string, role: 'lead' | 'worker', cwd: string, turn: TurnHandle): DriverPermission {
+    return async (toolName, input, opts = {}) => {
+      const signal = opts.signal ?? turn.signal;
       // a stopped/paused/cancelled turn runs nothing more, even if its CLI has not exited yet
       if (turn.signal.aborted) return { behavior: 'deny', message: `Your turn was stopped by ${userName()}.`, interrupt: true };
       const verdict = classifyToolUse(toolName, input, {
@@ -639,11 +665,11 @@ export class ClaudeBackend implements Backend {
       this.fm.setAgent(agentId, { state: 'waiting_user', station: 'user', activity: 'asking permission' });
       this.fm.agentLog(agentId, 'tool', `permission? ${describeToolCall(toolName, input)}`);
       const onAbort = () => this.fm.decisions.cancel(d.id, 'turn stopped');
-      if (opts.signal.aborted) onAbort();
-      else opts.signal.addEventListener('abort', onAbort, { once: true });
+      if (signal.aborted) onAbort();
+      else signal.addEventListener('abort', onAbort, { once: true });
       const res = await this.fm.decisions.wait(d.id);
-      opts.signal.removeEventListener('abort', onAbort);
-      if (opts.signal.aborted) return { behavior: 'deny', message: 'The turn was stopped.' };
+      signal.removeEventListener('abort', onAbort);
+      if (signal.aborted) return { behavior: 'deny', message: 'The turn was stopped.' };
       if (prevState) this.fm.setAgent(agentId, prevState);
       const opt = res.answer?.option;
       if (res.status === 'answered' && (opt === PERMISSION_OPTIONS[0] || opt === PERMISSION_OPTIONS[1])) {
@@ -691,77 +717,93 @@ export class ClaudeBackend implements Backend {
         systemAppend = workerSystemPrompt(this.fm, agentId, this.fm.repos.requireWorktree(t.repoId!, t.worktree!));
       }
       const model = role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
-      const options: Options = {
-        cwd,
-        model,
-        effort: role === 'lead' ? this.cfg.leadEffort : this.cfg.effort,
-        maxTurns: role === 'lead' ? this.cfg.maxTurnsLead : this.cfg.maxTurnsWorker,
-        settingSources: [],
-        permissionMode: 'default',
-        canUseTool: this.canUseTool(agentId, role, cwd, turn),
-        tools: role === 'lead' ? ['Read', 'Grep', 'Glob'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
-        // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
-        disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
-        mcpServers: { [MCP_SERVER]: buildMcpServer(this.fm, agentId, role, this.hooks, turn) },
-        systemPrompt: { type: 'preset', preset: 'claude_code', append: systemAppend },
-        abortController: abort,
-        env: this.env({ agentId, cwd }),
-        // we spawn the CLI ourselves (same as the SDK's local spawn) so its pid is known: a stopped
-        // turn's whole process tree can then be ended before its worktree is handed on
-        spawnClaudeCodeProcess: (o) => {
-          const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env as NodeJS.ProcessEnv, stdio: ['pipe', 'pipe', 'pipe'], signal: o.signal, windowsHide: true });
-          child.stderr?.setEncoding('utf8');
-          child.stderr?.on('data', (s: string) => this.fm.log.debug(`[${agentId} stderr] ${s.trim().slice(0, 300)}`));
-          child.on('error', (e) => this.fm.log.debug(`[${agentId}] CLI process error: ${e.message}`));
-          entry.child = child;
-          entry.spawnedAt = Date.now();
-          return child;
-        },
-        ...(resume ? { resume } : {}),
-        ...(this.cfg.maxBudgetUsdPerTurn ? { maxBudgetUsd: this.cfg.maxBudgetUsdPerTurn } : {}),
+      const effort = role === 'lead' ? this.cfg.leadEffort : this.cfg.effort;
+      const maxTurns = role === 'lead' ? this.cfg.maxTurnsLead : this.cfg.maxTurnsWorker;
+      const canUseTool = this.canUseTool(agentId, role, cwd, turn);
+      // Both providers must register their CLI: stop and hand-off reap its complete process tree.
+      const spawnProcess = (o: DriverSpawnOptions) => {
+        const child = spawn(o.command, o.args, { cwd: o.cwd, env: o.env, stdio: ['pipe', 'pipe', 'pipe'], signal: o.signal, windowsHide: true, detached: !!this.opts.driver && process.platform !== 'win32' });
+        child.stderr?.setEncoding('utf8');
+        child.stderr?.on('data', (s: string) => this.fm.log.debug(`[${agentId} stderr] ${s.trim().slice(0, 300)}`));
+        child.on('error', (e) => this.fm.log.debug(`[${agentId}] CLI process error: ${e.message}`));
+        entry.child = child;
+        entry.spawnedAt = Date.now();
+        return child;
       };
-      this.fm.agentLog(agentId, 'text', `${resume ? 'Resuming' : 'Starting'} ${job.kind}${job.taskId ? ` ${job.taskId}` : ''} (${model})`);
+      const onSession = (sessionId: string): void => {
+        if (this.fm.store.data.sessions[job.sessionKey]?.sessionId !== sessionId) this.recordSession(job.sessionKey, sessionId, model);
+      };
+      this.fm.agentLog(agentId, 'text', `${resume ? 'Resuming' : 'Starting'} ${job.kind}${job.taskId ? ` ${job.taskId}` : ''} (${model || 'default'})`);
       if (job.kind === 'followup' || job.resumed) this.fm.agentLog(agentId, 'text', truncate(job.prompt, 400));
-      const mapper = new StreamMapper(this.fm, agentId, cwd, role);
       const timer = setTimeout(() => this.abortTurn(entry, 'timeout'), TURN_TIMEOUT_MS);
       timer.unref?.();
       // messages that arrived while the agent was not in a turn ride along with this prompt
       const unread = this.fm.bus.inbox(agentId, { markRead: true });
       const prompt = unread.length ? `${job.prompt}\n\n[New messages]\n${formatInbox(unread, (id) => this.fm.nameOf(id))}` : job.prompt;
       try {
-        const q = this.queryFn({ prompt, options });
-        entry.q = q;
-        // the abort signal alone lets a CLI finish what it is doing (seen in a real run: ~6 s of
-        // further turns after /stop). close() force-ends the subprocess and its transports.
-        const closeQuery = () => {
-          try {
-            q.close();
-          } catch {
-            /* already closed */
+        if (this.opts.driver) {
+          // Do not construct Claude SDK options, an MCP server or Claude auth environment here.
+          stats = await this.opts.driver.runTurn({
+            fm: this.fm, agentId, role, cwd, prompt, systemAppend, model, effort, maxTurns,
+            resume, turn, abortController: abort,
+            tools: buildTools(this.fm, agentId, role, this.hooks, turn),
+            canUseTool, spawnProcess, onSession,
+          });
+        } else {
+          const options: Options = {
+            cwd,
+            model,
+            effort,
+            maxTurns,
+            settingSources: [],
+            permissionMode: 'default',
+            canUseTool,
+            tools: role === 'lead' ? ['Read', 'Grep', 'Glob'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
+            // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
+            disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
+            mcpServers: { [MCP_SERVER]: buildMcpServer(this.fm, agentId, role, this.hooks, turn) },
+            systemPrompt: { type: 'preset', preset: 'claude_code', append: systemAppend },
+            abortController: abort,
+            env: this.env({ agentId, cwd }),
+            spawnClaudeCodeProcess: spawnProcess,
+            ...(resume ? { resume } : {}),
+            ...('maxBudgetUsdPerTurn' in this.cfg && this.cfg.maxBudgetUsdPerTurn ? { maxBudgetUsd: this.cfg.maxBudgetUsdPerTurn } : {}),
+          };
+          const mapper = new StreamMapper(this.fm, agentId, cwd, role);
+          const q = this.queryFn({ prompt, options });
+          entry.q = q;
+          // the abort signal alone lets a CLI finish what it is doing (seen in a real run: ~6 s of
+          // further turns after /stop). close() force-ends the subprocess and its transports.
+          const closeQuery = () => {
+            try {
+              q.close();
+            } catch {
+              /* already closed */
+            }
+          };
+          if (abort.signal.aborted) closeQuery();
+          else abort.signal.addEventListener('abort', closeQuery, { once: true });
+          for await (const msg of q) {
+            if (abort.signal.aborted) break; // nothing from an aborted turn reaches the world
+            mapper.handle(msg);
+            if (mapper.stats.sessionId) onSession(mapper.stats.sessionId);
           }
-        };
-        if (abort.signal.aborted) closeQuery();
-        else abort.signal.addEventListener('abort', closeQuery, { once: true });
-        for await (const msg of q) {
-          if (abort.signal.aborted) break; // nothing from an aborted turn reaches the world
-          mapper.handle(msg);
-          if (mapper.stats.sessionId && this.fm.store.data.sessions[job.sessionKey]?.sessionId !== mapper.stats.sessionId) {
-            this.recordSession(job.sessionKey, mapper.stats.sessionId, model);
-          }
+          stats = mapper.stats;
         }
       } finally {
         clearTimeout(timer);
       }
-      stats = mapper.stats;
       if (stats.sessionId) this.recordSession(job.sessionKey, stats.sessionId, model, stats);
-      if (stats.authFailed) this.markAuthFailed(`Claude authentication failed (${stats.authFailed}). Run \`claude\` and /login, then restart the Foreman.`);
+      if (stats.authFailed) this.markAuthFailed(this.opts.driver
+        ? `${this.label} authentication failed (${stats.authFailed}). Sign in again, then restart the Foreman.`
+        : `Claude authentication failed (${stats.authFailed}). Run \`claude\` and /login, then restart the Foreman.`);
     } catch (e) {
       const aborted = abort.signal.aborted;
       if (!aborted) {
         const msg = (e as Error).message ?? String(e);
         this.fm.log.error(`${agentId} ${job.kind} failed: ${msg}`);
         this.fm.agentLog(agentId, 'error', `session error: ${truncate(msg, 400)}`);
-        if (/auth|login|credential|401/i.test(msg)) this.markAuthFailed(`Claude authentication failed: ${truncate(msg, 160)}`);
+        if (/auth|login|credential|401/i.test(msg)) this.markAuthFailed(`${this.label} authentication failed: ${truncate(msg, 160)}`);
         stats = { isError: true, errors: [msg] };
       }
     } finally {
@@ -945,7 +987,7 @@ export class ClaudeBackend implements Backend {
     if (this.cfg.leadReview && !this.isStopped(LEAD)) {
       const diff = await this.fm.repos.diff(t.repoId, t.worktree);
       this.fm.setAgent(LEAD, { state: 'reading', station: 'mergestation', activity: `reviewing ${t.id}` });
-      this.enqueue({ kind: 'review', agentId: LEAD, taskId: t.id, ...(t.goalId ? { goalId: t.goalId } : {}), sessionKey: `${LEAD}:${t.goalId ?? 'adhoc'}`, prompt: reviewPrompt(this.fm, this.fm.tasks.require(t.id), renderDiffText(diff.files), diff.stats, ci) });
+      this.enqueue({ kind: 'review', agentId: LEAD, taskId: t.id, ...(t.goalId ? { goalId: t.goalId } : {}), sessionKey: this.sessionKey(LEAD, t.goalId ?? 'adhoc'), prompt: reviewPrompt(this.fm, this.fm.tasks.require(t.id), renderDiffText(diff.files), diff.stats, ci) });
     } else {
       this.openMergeDecision(t, t.summary ?? 'Work complete.');
     }
@@ -979,7 +1021,7 @@ export class ClaudeBackend implements Backend {
     }
     if (t.status !== 'doing') this.fm.tasks.setStatus(t.id, 'doing', { force: true });
     this.fm.setAgent(t.assignee, { taskId: t.id, state: 'thinking', station: 'desk', activity: `revising ${t.id}`, ...(t.repoId ? { repoId: t.repoId } : {}), ...(t.worktree ? { worktree: t.worktree } : {}) });
-    this.enqueue({ kind: 'followup', agentId: t.assignee, taskId: t.id, ...(t.goalId ? { goalId: t.goalId } : {}), sessionKey: `${t.assignee}:${t.id}`, prompt });
+    this.enqueue({ kind: 'followup', agentId: t.assignee, taskId: t.id, ...(t.goalId ? { goalId: t.goalId } : {}), sessionKey: this.sessionKey(t.assignee, t.id), prompt });
   }
 
   // ---- user intents -------------------------------------------------------------------------
@@ -1010,7 +1052,7 @@ export class ClaudeBackend implements Backend {
         return;
       }
       consume();
-      this.enqueue({ kind: 'followup', agentId: LEAD, goalId: goal.id, sessionKey: `${LEAD}:${goal.id}`, prompt });
+      this.enqueue({ kind: 'followup', agentId: LEAD, goalId: goal.id, sessionKey: this.sessionKey(LEAD, goal.id), prompt });
       return;
     }
     const t = this.fm.tasks.list().filter((x) => x.assignee === id && (x.status === 'doing' || x.status === 'review')).pop();
@@ -1026,7 +1068,7 @@ export class ClaudeBackend implements Backend {
       );
       return;
     }
-    this.enqueue({ kind: 'followup', agentId: id, taskId: t.id, ...(t.goalId ? { goalId: t.goalId } : {}), sessionKey: `${id}:${t.id}`, prompt });
+    this.enqueue({ kind: 'followup', agentId: id, taskId: t.id, ...(t.goalId ? { goalId: t.goalId } : {}), sessionKey: this.sessionKey(id, t.id), prompt });
   }
 
   onDecisionSettled(d: Decision): void {
@@ -1037,7 +1079,7 @@ export class ClaudeBackend implements Backend {
         const inf = this.st.inflight[d.agentId];
         const t = d.taskId ? this.fm.tasks.get(d.taskId) : undefined;
         const goalId = inf?.goalId ?? t?.goalId ?? (d.agentId === LEAD ? this.fm.currentGoal()?.id : undefined);
-        const sessionKey = inf?.sessionKey ?? (d.agentId === LEAD ? `${LEAD}:${goalId ?? 'adhoc'}` : t ? `${d.agentId}:${t.id}` : undefined);
+        const sessionKey = inf?.sessionKey ?? (d.agentId === LEAD ? this.sessionKey(LEAD, goalId ?? 'adhoc') : t ? this.sessionKey(d.agentId, t.id) : undefined);
         if (sessionKey) {
           // keep the interrupted job's kind, so its after-turn step (e.g. plan -> active) still runs
           this.enqueue({
