@@ -1,3 +1,5 @@
+import { boardSummary, planText } from '../prompt-state.js';
+export { boardSummary } from '../prompt-state.js';
 // System-prompt appendices and job prompts for the claude backend.
 import type { Foreman } from '../../foreman.js';
 import type { Goal, Task, Worktree } from '../../protocol.js';
@@ -39,19 +41,6 @@ How to work
 - Stay on your branch in this worktree: do not check out other branches, edit .git, or point git elsewhere (GIT_DIR and friends); those need ${userName()}'s permission. Your commits are made as AgentCraft ${fm.nameOf(agentId)} and are never signed (no -S).
 - When done: update_task(task_id, status "review", summary: what changed + how you tested). If you cannot finish: update_task(status "blocked", blocked_reason). Then end your turn.
 `.trim();
-}
-
-export function boardSummary(fm: Foreman, goalId?: string): string {
-  const tasks = fm.tasks.list().filter((t) => !goalId || t.goalId === goalId);
-  if (!tasks.length) return '(no tasks yet)';
-  return tasks
-    .map((t) => `- ${t.id} [${t.status}] ${t.title}${t.assignee ? ` (${fm.nameOf(t.assignee)})` : ''}${t.deps.length ? ` deps: ${t.deps.join(', ')}` : ''}`)
-    .join('\n');
-}
-
-function planText(fm: Foreman): string {
-  const plan = fm.memory.list().filter((m) => m.scope === 'shared' && /^plan/i.test(m.title)).pop();
-  return plan ? truncate(plan.body, 3000) : '(no plan in memory)';
 }
 
 export function planPrompt(fm: Foreman, goal: Goal, repoPath: string, branch: string): string {
@@ -98,14 +87,14 @@ export function reviewPrompt(
   task: Task,
   diffText: string,
   stats: { files: number; additions: number; deletions: number },
-  ci: { pass: boolean; command: string; output: string } | undefined,
+  ci: { pass: boolean | null; command: string; output: string } | undefined,
 ): string {
   // who worked on it (a task handed over after a stop/reassign has several worktrees)
   const workers = [...new Set(fm.repos.list().flatMap((r) => r.worktrees.filter((w) => w.taskId === task.id)).map((w) => fm.nameOf(w.agentId)))];
   const handedOver = workers.length > 1 ? `\nWorked on by ${workers.join(', then ')} (handed over; the branch continues the earlier work).` : '';
   return `Review request: ${task.id} "${task.title}" by ${fm.nameOf(task.assignee ?? '?')}.${handedOver}
 ${taskHistory(fm, task)}Worker summary: ${task.summary ?? '(none)'}
-Tests (${ci?.command ?? 'none'}): ${ci ? (ci.pass ? 'PASS' : 'FAIL') : 'not run'}
+Tests (${ci?.command ?? 'none'}): ${ci && ci.pass !== null ? (ci.pass ? 'PASS' : 'FAIL') : 'not run'}
 ${ci && !ci.pass ? `\nTest output (tail):\n${ci.output}\n` : ''}
 Diff vs base (${stats.files} files, +${stats.additions} -${stats.deletions}):
 ${diffText}

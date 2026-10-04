@@ -1609,7 +1609,7 @@ public final class DiffScreen extends Screen {
 	public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
 		double mx = e.x();
 		double my = e.y();
-		if (e.button() == 0) {
+		if (e.button() == InputConstants.MOUSE_BUTTON_LEFT) {
 			for (Btn b : buttons) {
 				if (b.enabled() && b.hit(mx, my)) {
 					pressed = b.id();

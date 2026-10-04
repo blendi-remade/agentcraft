@@ -5,7 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 import dev.agentcraft.AgentCraft;
-import dev.agentcraft.world.HqWorld;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -62,16 +61,17 @@ public final class Anchors {
 	}
 
 	public static void init() {
-		ServerLifecycleEvents.SERVER_STARTED.register(server -> {
-			if (HqWorld.isHq(server)) {
-				load(server);
-			}
-		});
+		ServerLifecycleEvents.SERVER_STARTED.register(Anchors::load);
 		ServerLifecycleEvents.SERVER_STOPPED.register(server -> set(Layout.EMPTY));
 	}
 
 	public static Layout current() {
 		return current;
+	}
+
+	/** Apply a layout delivered by the connected multiplayer server; the client never persists it locally. */
+	public static void receiveServerLayout(JsonObject root) {
+		set(fromJson(root));
 	}
 
 	public static @Nullable Anchor get(String name) {
@@ -86,6 +86,11 @@ public final class Anchors {
 		return new Builder(layoutName);
 	}
 
+	/** Builder whose locally specified coordinates are translated into an isolated world region. */
+	public static Builder builder(String layoutName, int offsetX, int offsetY, int offsetZ) {
+		return new Builder(layoutName, offsetX, offsetY, offsetZ);
+	}
+
 	/** Make {@code layout} current and save it with the world. Call on the server thread. */
 	public static void publish(MinecraftServer server, Layout layout) {
 		Layout withRev = new Layout(layout.name(), current.revision() + 1, layout.bounds(), layout.anchors());
@@ -95,6 +100,7 @@ public final class Anchors {
 	}
 
 	private static void set(Layout layout) {
+		if (layout.equals(current)) return; // A server echo must not re-publish itself in integrated worlds.
 		current = layout;
 		for (Consumer<Layout> l : LISTENERS) {
 			try {
@@ -199,15 +205,25 @@ public final class Anchors {
 	/** Collects anchors while an HQ builder runs. Later puts with the same name replace earlier ones. */
 	public static final class Builder {
 		private final String name;
+		private final int offsetX;
+		private final int offsetY;
+		private final int offsetZ;
 		private final Map<String, Anchor> anchors = new LinkedHashMap<>();
 		private @Nullable Bounds bounds;
 
 		private Builder(String name) {
+			this(name, 0, 0, 0);
+		}
+
+		private Builder(String name, int offsetX, int offsetY, int offsetZ) {
 			this.name = name;
+			this.offsetX = offsetX;
+			this.offsetY = offsetY;
+			this.offsetZ = offsetZ;
 		}
 
 		public Builder put(String anchorName, double x, double y, double z, float yaw, float pitch) {
-			anchors.put(anchorName, new Anchor(anchorName, x, y, z, yaw, pitch));
+			anchors.put(anchorName, new Anchor(anchorName, x + offsetX, y + offsetY, z + offsetZ, yaw, pitch));
 			return this;
 		}
 
@@ -233,8 +249,8 @@ public final class Anchors {
 		}
 
 		public Builder bounds(int minX, int minY, int minZ, int maxX, int maxY, int maxZ) {
-			this.bounds = new Bounds(Math.min(minX, maxX), Math.min(minY, maxY), Math.min(minZ, maxZ),
-				Math.max(minX, maxX), Math.max(minY, maxY), Math.max(minZ, maxZ));
+			this.bounds = new Bounds(Math.min(minX, maxX) + offsetX, Math.min(minY, maxY) + offsetY, Math.min(minZ, maxZ) + offsetZ,
+				Math.max(minX, maxX) + offsetX, Math.max(minY, maxY) + offsetY, Math.max(minZ, maxZ) + offsetZ);
 			return this;
 		}
 

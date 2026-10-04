@@ -19,7 +19,6 @@ import java.util.Map;
 import java.util.Set;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.multiplayer.ClientLevel;
-import net.minecraft.client.player.LocalPlayer;
 import net.minecraft.core.BlockPos;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.phys.Vec3;
@@ -41,9 +40,9 @@ import org.jspecify.annotations.Nullable;
  * <p>Phase 3: a station anchor with a seat block ({@link Seats}) is walked to via a free cell next
  * to the seat, then the agent steps in and sits; leaving a seat starts with standing up. An agent
  * that is {@code waiting_user} walks to the user spot by the podium, or, when you are inside the
- * HQ (not spectating), to a free spot about two blocks from you and waits there facing you
- * ({@link #userSpot}). The derived "waiting on you" status ({@link AgentView#awaitingUser}) comes
- * from the open decisions.
+ * HQ, gathers around the shared podium anchor and waits facing it, so every client sees the same
+ * target positions. The derived "waiting on you" status ({@link AgentView#awaitingUser}) comes from
+ * the open decisions.
  */
 public final class AgentManager {
 	private static final AgentManager INSTANCE = new AgentManager();
@@ -51,16 +50,13 @@ public final class AgentManager {
 	private static final double MAX_WALK = 96;
 	/** Ticks it takes to get up from a seat before walking off. */
 	private static final int STAND_UP_TICKS = 8;
-	/** A waiting agent re-approaches you once you moved this far from where it chose its spot (blocks). */
-	private static final double FOLLOW_SLACK = 2.6;
-	/** How far from you a waiting agent stands (blocks). */
+	/** Radius around the shared podium anchor used by agents waiting for input (blocks). */
 	static final double USER_DISTANCE = 3.2;
 
 	private final Map<String, ClientAgentEntity> entities = new LinkedHashMap<>();
 	private final Map<Integer, ClientAgentEntity> byEntityId = new HashMap<>();
 	private final StationAssigner assigner = new StationAssigner();
 	private final Seats seats = new Seats();
-	private final Map<String, UserSpot> userSpots = new HashMap<>();
 	private final Map<String, String> awaiting = new HashMap<>();
 	private final Map<String, Integer> awaitingCounts = new HashMap<>();
 	private long awaitingRevision = -1;
@@ -69,10 +65,6 @@ public final class AgentManager {
 	private int nextEntityId = -10_000;
 	private int pathFailures;
 	private long ticks;
-
-	/** Where a waiting agent stands near the player, and where the player was when it was chosen. */
-	private record UserSpot(Anchor spot, Vec3 playerAt) {
-	}
 
 	private AgentManager() {
 	}
@@ -124,7 +116,6 @@ public final class AgentManager {
 			byEntityId.clear();
 			assigner.clear();
 			seats.clear();
-			userSpots.clear();
 			level = lvl;
 			layoutRevision = -1;
 		}
@@ -142,17 +133,19 @@ public final class AgentManager {
 		layoutRevision = layout.revision();
 		if (relayout) {
 			seats.clear();
-			userSpots.clear();
 		}
 		List<Agent> agents = new ArrayList<>(st.agents().values());
 		Map<String, Anchor> targets = layout.isEmpty() ? fallbackTargets(agents, lvl) : assigner.assign(agents, layout);
 		boolean stale = st.isStale();
 		updateAwaiting(st);
 		GridPathfinder pf = layout.isEmpty() ? null : new GridPathfinder(lvl, layout.bounds());
-		Vec3 playerFeet = layout.isEmpty() ? null : playerInHq(mc, layout, pf);
+		Anchor waitingCenter = layout.get(AnchorNames.USER);
+		if (waitingCenter == null) {
+			waitingCenter = layout.get(AnchorNames.DECISION_PODIUM);
+		}
 		int waitingIndex = 0;
 		int waitingCount = 0;
-		if (playerFeet != null) {
+		if (waitingCenter != null && pf != null) {
 			for (Agent a : agents) {
 				if (followsPlayer(a)) {
 					waitingCount++;
@@ -179,15 +172,13 @@ public final class AgentManager {
 			AgentView v = e.view();
 			v.update(a, stale, awaiting.get(a.id()), awaitingCounts.getOrDefault(a.id(), 0));
 			v.station = StationAssigner.stationKey(a);
-			v.anchor = target.name();
-			if (playerFeet != null && !stale && followsPlayer(a)) {
-				Anchor near = userSpot(a.id(), e, playerFeet, waitingIndex++, waitingCount, pf);
+			if (waitingCenter != null && pf != null && !stale && followsPlayer(a)) {
+				Anchor near = waitingSpot(waitingCenter, waitingIndex++, waitingCount, pf);
 				if (near != null) {
 					target = near;
 				}
-			} else {
-				userSpots.remove(a.id());
 			}
+			v.anchor = target.name();
 			Seats.Seat seat = pf == null ? null : seats.at(lvl, target, ticks, pf);
 			Anchor effective = seat != null ? seat.target() : target;
 			if (relayout) {
@@ -255,86 +246,35 @@ public final class AgentManager {
 		return d.agentId();
 	}
 
-	/** The player's feet on the HQ floor when they are inside the HQ and not spectating, else null. */
-	private static @Nullable Vec3 playerInHq(Minecraft mc, Anchors.Layout layout, @Nullable GridPathfinder pf) {
-		LocalPlayer p = mc.player;
-		Anchors.Bounds b = layout.bounds();
-		if (p == null || pf == null || b == null || p.isSpectator()) {
-			return null;
-		}
-		// feet a hair below a block top (64.99999) belong to the block above
-		BlockPos bp = BlockPos.containing(p.getX(), p.getY() + 0.05, p.getZ());
-		if (!b.contains(bp.getX(), bp.getY(), bp.getZ()) && !b.contains(bp.getX(), bp.getY() - 2, bp.getZ())) {
-			return null;
-		}
-		for (int dy = 0; dy <= 3; dy++) {
-			double f = pf.floor(bp.getX(), bp.getY() - dy, bp.getZ());
-			if (!Double.isNaN(f)) {
-				return new Vec3(p.getX(), f, p.getZ());
-			}
-		}
-		return null;
-	}
-
-	/**
-	 * A free walkable spot about three blocks from the player, on the agent's side (several waiting
-	 * agents fan out), facing the player. Three blocks is a conversation distance: the agent, its
-	 * plate and its "!" fit on screen at eye level (at two blocks the plate filled the upper middle
-	 * of the view and the "!" was cut off). Sticky until the player moves {@value #FOLLOW_SLACK}
-	 * blocks away from where they were when it was chosen.
-	 */
-	private @Nullable Anchor userSpot(String agentId, ClientAgentEntity e, Vec3 player, int index, int count, GridPathfinder pf) {
-		UserSpot prev = userSpots.get(agentId);
-		if (prev != null && prev.playerAt().distanceTo(player) < FOLLOW_SLACK) {
-			return prev.spot();
-		}
-		double base = Math.atan2(e.getZ() - player.z, e.getX() - player.x);
-		if (e.position().distanceToSqr(player) < 0.25) {
-			base = 0;
-		}
-		double spread = Math.toRadians(42);
-		double fan = (index - (count - 1) / 2.0) * spread;
+	/** Deterministic shared fan around the same podium anchor on every client. */
+	private static @Nullable Anchor waitingSpot(Anchor center, int index, int count, GridPathfinder pf) {
+		double base = Math.toRadians(center.yaw() + 90.0);
+		double fan = count <= 1 ? 0 : (index - (count - 1) / 2.0) * Math.toRadians(34);
 		double[] radii = {USER_DISTANCE, USER_DISTANCE + 0.5, USER_DISTANCE - 0.6};
-		double[] offs = {0, 0.45, -0.45, 0.9, -0.9, 1.4, -1.4, 2.0, -2.0, Math.PI};
-		for (double r : radii) {
-			for (double o : offs) {
-				double ang = base + fan + o;
-				double x = player.x + Math.cos(ang) * r;
-				double z = player.z + Math.sin(ang) * r;
+		double[] offsets = {0, 0.25, -0.25, 0.55, -0.55, 0.9, -0.9, Math.PI};
+		for (double radius : radii) {
+			for (double offset : offsets) {
+				double angle = base + fan + offset;
+				double x = center.x() + Math.cos(angle) * radius;
+				double z = center.z() + Math.sin(angle) * radius;
 				int bx = (int) Math.floor(x);
 				int bz = (int) Math.floor(z);
-				int by = (int) Math.floor(player.y + 0.01);
+				int by = (int) Math.floor(center.y() + 0.01);
 				for (int dy : new int[] {0, 1, -1}) {
-					double f = pf.floor(bx, by + dy, bz);
-					if (Double.isNaN(f)) {
+					double floor = pf.floor(bx, by + dy, bz);
+					if (Double.isNaN(floor)) {
 						continue;
 					}
-					Vec3 at = new Vec3(x, f, z);
-					if (!pf.clear(at, at) || taken(agentId, at)) {
+					Vec3 spot = new Vec3(x, floor, z);
+					if (!pf.clear(spot, spot)) {
 						continue;
 					}
-					float yaw = (float) Math.toDegrees(Math.atan2(-(player.x - x), player.z - z));
-					Anchor spot = new Anchor(AnchorNames.USER + "@player", x, f, z, yaw, 0);
-					userSpots.put(agentId, new UserSpot(spot, player));
-					return spot;
+					float yaw = (float) Math.toDegrees(Math.atan2(-(center.x() - x), center.z() - z));
+					return new Anchor(AnchorNames.USER + "@shared-" + index, x, floor, z, yaw, 0);
 				}
 			}
 		}
 		return null;
-	}
-
-	private boolean taken(String agentId, Vec3 at) {
-		for (var en : userSpots.entrySet()) {
-			if (!en.getKey().equals(agentId) && en.getValue().spot().pos().distanceToSqr(at) < 1.2 * 1.2) {
-				return true;
-			}
-		}
-		for (ClientAgentEntity o : entities.values()) {
-			if (!o.agentId().equals(agentId) && !o.motion().walking() && o.position().distanceToSqr(at) < 0.9 * 0.9) {
-				return true;
-			}
-		}
-		return false;
 	}
 
 	/** A fresh agent shows what it said in the last few seconds (e.g. after a reconnect). */

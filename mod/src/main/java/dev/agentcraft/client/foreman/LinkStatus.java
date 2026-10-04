@@ -37,11 +37,11 @@ public record LinkStatus(Phase phase, String url, int attempt, @Nullable String 
 		return phase.name().toLowerCase(java.util.Locale.ROOT);
 	}
 
-	LinkStatus with(Phase p, @Nullable String error, long nextRetry) {
+	public LinkStatus with(Phase p, @Nullable String error, long nextRetry) {
 		return new LinkStatus(p, url, p == Phase.SYNCED ? 0 : attempt, error, System.currentTimeMillis(), nextRetry, everSynced || p == Phase.SYNCED);
 	}
 
-	LinkStatus attempt(int n) {
+	public LinkStatus attempt(int n) {
 		return new LinkStatus(phase, url, n, lastError, sinceMs, nextRetryAtMs, everSynced);
 	}
 }

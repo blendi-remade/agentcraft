@@ -199,16 +199,27 @@ export class ForemanClient {
   }
 
   /** Resolve with the first incoming message for which pred(msg, state) is true. */
-  waitFor(pred, { timeoutMs = 15_000, what = 'message' } = {}) {
-    if (this.closed) return Promise.reject(new ForemanError('Foreman connection closed'));
-    return new Promise((resolve, reject) => {
-      const w = { pred, resolve, reject, timer: null };
+  waitFor(pred, opts = {}) {
+    return this.#waiter(pred, opts).promise;
+  }
+
+  // Internal cancellation lets a failed request discard its unused reply waiter.
+  #waiter(pred, { timeoutMs = 15_000, what = 'message' } = {}) {
+    const w = { pred, timer: null };
+    const cancel = () => {
+      this.waiters.delete(w);
+      clearTimeout(w.timer);
+    };
+    const promise = new Promise((resolve, reject) => {
+      if (this.closed) { reject(new ForemanError('Foreman connection closed')); return; }
+      Object.assign(w, { resolve, reject });
       w.timer = setTimeout(() => {
         this.waiters.delete(w);
         reject(new ForemanError(`timed out after ${timeoutMs} ms waiting for ${what}`));
       }, timeoutMs);
       this.waiters.add(w);
     });
+    return { promise, cancel };
   }
 
   /** Resolve once pred(state) is true (checked now and after every message). */
@@ -247,11 +258,18 @@ export class ForemanClient {
   /** diff.request -> the matching `diff` reply (throws if the reply carries an error). */
   async diff(repoId, worktree, { timeoutMs = 30_000 } = {}) {
     const requestId = `${this.clientName}-diff-${this.nextId++}`;
-    const reply = this.waitFor((m) => m.type === 'diff' && m.requestId === requestId, { timeoutMs, what: `diff ${repoId}/${worktree}` });
-    await this.send('diff.request', { requestId, repoId, worktree }, { timeoutMs });
-    const d = await reply;
-    if (d.error) throw new ForemanError(`diff ${repoId}/${worktree}: ${d.error}`, { diff: d });
-    return d;
+    const reply = this.#waiter((m) => m.type === 'diff' && m.requestId === requestId, { timeoutMs, what: `diff ${repoId}/${worktree}` });
+    try {
+      // Observe both promises immediately: either may reject before the other settles.
+      const [d] = await Promise.all([
+        reply.promise,
+        this.send('diff.request', { requestId, repoId, worktree }, { timeoutMs }),
+      ]);
+      if (d.error) throw new ForemanError(`diff ${repoId}/${worktree}: ${d.error}`, { diff: d });
+      return d;
+    } finally {
+      reply.cancel();
+    }
   }
 
   /** Open decisions, oldest first, optionally of one kind (question|permission|merge). */

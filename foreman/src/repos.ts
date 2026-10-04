@@ -51,8 +51,9 @@ export interface MergeResult {
 }
 
 export interface TestResult {
-  pass: boolean;
-  code: number;
+  /** null when no test command was found and no check ran. */
+  pass: boolean | null;
+  code: number | null;
   command: string;
   output: string; // tail
   durationMs: number;
@@ -69,7 +70,7 @@ export function parseTestOutput(text: string): { failures: string[]; summary?: s
   if (!failures.length) for (const m of text.matchAll(/^\s*(?:✖|×|FAIL)\s+(.+)$/gm)) failures.push(m[1]!.trim());
   const nums: string[] = [];
   for (const k of ['tests', 'pass', 'fail']) {
-    const m = new RegExp(`^# ${k} (\\d+)$`, 'm').exec(text);
+    const m = new RegExp(`^[#ℹ] ${k} (\\d+)$`, 'm').exec(text);
     if (m) nums.push(`${k} ${m[1]}`);
   }
   return { failures: [...new Set(failures)].slice(0, 20), ...(nums.length ? { summary: nums.join(', ') } : {}) };
@@ -711,7 +712,7 @@ export class RepoManager {
     const r = this.require(repoId);
     const cwd = worktreeId ? this.requireWorktree(repoId, worktreeId).path : r.path;
     const cmd = command ?? this.detectTestCommand(cwd);
-    if (!cmd) return { pass: true, code: 0, command: '(none)', output: 'no test command found', durationMs: 0, failures: [] };
+    if (!cmd) return { pass: null, code: null, command: '(none)', output: 'No test command found; tests were not run. Configure --ci to run a check.', durationMs: 0, failures: [] };
     const t0 = Date.now();
     // the worktree's test scripts are agent-editable code: run them with git transports disabled
     // (a `git push` inside a test script fails) and kill the whole process tree on timeout

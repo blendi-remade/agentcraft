@@ -1,4 +1,4 @@
-﻿node_modules/
+node_modules/
 build/
 .gradle/
 run/
@@ -17,3 +17,6 @@ foreman/scratch/
 mod/.gradle/
 mod/build/
 .claude/
+
+# Local qualification receipts and tool caches
+.audit-t9/

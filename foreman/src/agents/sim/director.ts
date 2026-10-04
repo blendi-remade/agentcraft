@@ -239,7 +239,7 @@ export class SimDirector {
     if (task) this.fm.tasks.update(task.id, { ci: 'running' });
     this.fm.repos.setCi(this.repoId, 'running');
     await this.sleep(800);
-    const res = await this.fm.repos.runTests(this.repoId, opts.worktree?.id);
+    const res = await this.fm.repos.runTests(this.repoId, opts.worktree?.id, cmd);
     const summary = res.summary ?? '';
     const failing = res.failures.slice(0, 4).map((f) => `FAIL ${f}`);
     this.log(agentId, res.pass ? 'result' : 'error', `${res.pass ? 'tests passed' : 'tests FAILED'} (${(res.durationMs / 1000).toFixed(1)}s)${summary ? ` - ${summary}` : ''}${failing.length ? '\n' + failing.join('\n') : ''}`);
@@ -248,7 +248,7 @@ export class SimDirector {
     this.fm.bus.feed('ci', `${this.fm.nameOf(agentId)}: ${res.pass ? 'tests pass' : 'tests fail'}${task ? ` on ${task.id}` : ''}${summary ? ` (${summary})` : ''}`, { agentId });
     this.act(agentId, 'testing', 'testbench', res.pass ? 'tests pass' : `${failing.length || 'some'} failing`);
     await this.sleep(700);
-    return res.pass;
+    return res.pass === true;
   }
 
   /** Run the real CLI on the main checkout (temp notes file), one Bash call per command. */

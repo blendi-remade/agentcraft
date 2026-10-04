@@ -12,6 +12,7 @@ base {
 
 repositories {
 	mavenCentral()
+	maven { url "https://maven.nucleoid.xyz" }
 }
 
 loom {
@@ -42,7 +43,11 @@ loom {
 }
 
 dependencies {
+	testImplementation "org.junit.jupiter:junit-jupiter:5.12.2"
+	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
+	testImplementation "org.mockito:mockito-core:5.18.0"
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
+	compileOnly "eu.pb4:polymer-core:0.18.2+26.3"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
@@ -54,6 +59,17 @@ dependencies {
 	include("org.java-websocket:Java-WebSocket:${project.java_websocket_version}") {
 		exclude group: 'org.slf4j'
 	}
+}
+
+// Isolated JVM qualification; no Minecraft server or Foreman process is started.
+sourceSets.test.compileClasspath += sourceSets.client.output
+sourceSets.test.runtimeClasspath += sourceSets.client.output
+tasks.named("test") {
+	useJUnitPlatform()
+	jvmArgs "-XX:+EnableDynamicAgentLoading"
+	// Owner tests must not inherit an operator's real server identity or offline override.
+	environment.remove("AGENTCRAFT_OWNER_UUID")
+	environment.remove("AGENTCRAFT_OWNER_ALLOW_OFFLINE")
 }
 
 processResources {

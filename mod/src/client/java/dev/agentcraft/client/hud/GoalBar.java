@@ -26,7 +26,14 @@ import net.minecraft.client.gui.GuiGraphicsExtractor;
  */
 public final class GoalBar implements HudElement {
 	public static final int TOP = 6;
-	private static final int MAX_W = 300;
+	/** Fullscreen macOS can render behind the MacBook camera housing. Keep centered HUD below it. */
+    static int centeredTop() {
+        Minecraft mc = Minecraft.getInstance();
+        if (!System.getProperty("os.name", "").startsWith("Mac") || !mc.options.fullscreen().get()) return TOP;
+        int pixels = Math.clamp(Integer.getInteger("agentcraft.hud.notchPixels", 80), 0, 256);
+        return TOP + (int) Math.ceil((double) pixels / Math.max(1, mc.getWindow().getGuiScale()));
+    }
+    private static final int MAX_W = 300;
 	/** Narrower than this and the bar moves below the connection pill instead of squeezing next to it. */
 	private static final int MIN_W = 220;
 	/** Free GUI px kept between the bar and the connection pill. */
@@ -55,7 +62,7 @@ public final class GoalBar implements HudElement {
 			return;
 		}
 		Font font = mc.font;
-		int y = TOP + authBannerOffset(s, font, g);
+		int y = centeredTop() + authBannerOffset(s, font, g);
 		boolean stale = s.isStale();
 		// panels stay opaque (legible over any background); offline / long-done content is dimmed instead
 		int alpha = stale ? 200 : 255;

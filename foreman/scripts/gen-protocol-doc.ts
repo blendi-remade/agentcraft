@@ -179,7 +179,8 @@ function build(): string {
   out.push('');
   out.push('| console input | message |');
   out.push('| --- | --- |');
-  out.push('| plain text | `goal.submit {text}` |');
+  out.push('| plain text | `user.message {to:"marlow", text}` |');
+  out.push('| `/goal <text>` | `goal.submit {text, repoId?}` (choose a repository when several are registered) |');
   out.push('| `@name text` | `user.message {to:"all", text:"@name text"}` (the Foreman routes it) or `{to:"name", text}` |');
   out.push('| `/answer [dN] <n\\|label> [text]` | `decision.answer {decisionId, option, text?}` |');
   out.push('| `/repo add <path>` | `repo.add {path}` |');

@@ -6,6 +6,7 @@
 		"BackupConfirmScreenAccessor",
 		"CameraAccessor",
 		"CameraMixin",
+		"PolymerBlockDecodeMixin",
 		"ClientLevelAccessor",
 		"EntityRenderDispatcherMixin",
 		"MinecraftMixin",

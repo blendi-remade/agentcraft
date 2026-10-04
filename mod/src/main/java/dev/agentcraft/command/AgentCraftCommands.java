@@ -42,7 +42,9 @@ public final class AgentCraftCommands {
 			return layout.anchors().size();
 		})));
 		CommandRegistrationCallback.EVENT.register((dispatcher, buildContext, selection) -> {
-			LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("agentcraft").requires(Commands.hasPermission(Commands.LEVEL_GAMEMASTERS));
+			// Public root: each mutating subcommand performs its own owner check. Observers need
+			// status/visit/chat commands without being granted OP.
+			LiteralArgumentBuilder<CommandSourceStack> root = Commands.literal("agentcraft");
 			for (var s : SUBS) {
 				s.accept(root);
 			}

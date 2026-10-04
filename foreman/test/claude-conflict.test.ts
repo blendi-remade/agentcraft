@@ -35,7 +35,7 @@ function fakeQuery() {
     const opts = options!;
     const p = String(prompt);
     const cwd = opts.cwd!;
-    const agent = cwd.includes('kit-') ? 'kit' : cwd.includes('juniper-') ? 'juniper' : 'marlow';
+    const agent = path.basename(cwd).startsWith('kit-') ? 'kit' : path.basename(cwd).startsWith('juniper-') ? 'juniper' : 'marlow';
     prompts.push({ agent, prompt: p });
     const gitEnv = { ...process.env, ...opts.env };
     async function* run(): AsyncGenerator<SDKMessage> {

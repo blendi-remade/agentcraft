@@ -1,0 +1,36 @@
+import { afterEach, expect, it, vi } from 'vitest';
+import { CodexBackend } from '../src/agents/codex/index.js';
+import { modelChoices, validateSelection, type ModelChoice } from '../src/agents/codex/model-settings.js';
+import { makeForeman, tempDir, rmrf, type Harness } from './helpers.js';
+import type { Outbound } from '../src/protocol.js';
+const models: ModelChoice[] = [{model:'astra',label:'Astra',efforts:['medium','high'],defaultEffort:'medium'},{model:'sol',label:'Sol',efforts:['high'],defaultEffort:'high'}];
+let h: Harness | undefined;
+afterEach(async()=>{if(h){await h.fm.close();rmrf(h.home);h=undefined;}vi.restoreAllMocks();});
+it('exposes only selectable catalog models and their actual effort choices',()=>{
+  expect(modelChoices([{model:'astra',displayName:'Astra',supportedReasoningEfforts:[{reasoningEffort:'medium'}],defaultReasoningEffort:'medium'}, {model:'hidden',hidden:true},{model:'empty'}])).toEqual([models[0] && {...models[0],efforts:['medium']}]);
+  expect(()=>validateSelection(models,'astra','ultra')).toThrow('reasoning');
+  expect(()=>validateSelection(models,'missing','high')).toThrow('available');
+  expect(()=>validateSelection(models,undefined,'high')).toThrow();
+  expect(validateSelection(models)).toBeUndefined();
+});
+it('routes UI reads and writes, persists per-agent choices and restores defaults',async()=>{
+  h=makeForeman(tempDir(),['--backend','codex']);
+  h.cfg.codex.leadModel='default-lead'; h.cfg.codex.effort='low';
+  const backend=new CodexBackend(h.fm,h.cfg.codex,{skipAuthCheck:true});h.fm.backend=backend;
+  vi.spyOn(backend as unknown as {availableModels():Promise<ModelChoice[]>},'availableModels').mockResolvedValue(models);
+  const replies:Outbound[]=[];
+  await h.fm.handle({v:1,type:'agent.configure',id:'save',agentId:'marlow',model:'astra',effort:'medium'},m=>replies.push(m));
+  expect(replies.at(-1)).toMatchObject({type:'ack',ok:true,result:{selection:{model:'astra',effort:'medium'},next:{model:'astra',effort:'medium'},active:null}});
+  const state=JSON.parse(JSON.stringify(h.fm.store.data.backend));
+  expect(state.codex.modelSettings.marlow).toEqual({model:'astra',effort:'medium'});
+  h.fm.store.data.backend=state;
+  const reloaded=new CodexBackend(h.fm,h.cfg.codex,{skipAuthCheck:true});
+  vi.spyOn(reloaded as unknown as {availableModels():Promise<ModelChoice[]>},'availableModels').mockResolvedValue(models);
+  expect(await reloaded.agentModels('marlow')).toMatchObject({selection:{model:'astra',effort:'medium'}});
+  expect(await reloaded.agentModels('kit')).toMatchObject({selection:null,next:{effort:'low'}});
+  await expect(reloaded.configureAgent('marlow','astra','ultra')).rejects.toThrow();
+  expect(await reloaded.agentModels('marlow')).toMatchObject({selection:{effort:'medium'}});
+  expect(await reloaded.configureAgent('marlow')).toMatchObject({selection:null,next:{model:'default-lead',effort:'low'}});
+  await h.fm.handle({v:1,type:'agent.configure',id:'bad',agentId:'missing',model:'sol',effort:'high'},m=>replies.push(m));
+  expect(replies.at(-1)).toMatchObject({type:'ack',ok:false});
+});

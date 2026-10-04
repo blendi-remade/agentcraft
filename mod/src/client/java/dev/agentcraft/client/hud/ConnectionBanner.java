@@ -20,7 +20,7 @@ import net.minecraft.util.Util;
 
 /**
  * Small Foreman status pill in the top-right corner, and a loud banner at the top centre when the
- * claude backend cannot authenticate.
+ * selected backend cannot authenticate.
  * <ul>
  *   <li>connected: quiet ink pill, teal dot, "Foreman · sim" (or the claude account); fades to a
  *       lower opacity after a few seconds;</li>
@@ -132,15 +132,25 @@ public final class ConnectionBanner implements HudElement {
 	}
 
 	private static void drawAuthBanner(GuiGraphicsExtractor g, Font font, ForemanStatus fs) {
-		String head = "Claude backend can't authenticate";
-		String msg = fs.message() != null ? fs.message() : "run `claude` and /login, then restart the Foreman";
+		String provider = switch (fs.backend()) {
+			case CODEX -> "Codex";
+			case CLAUDE -> "Claude";
+			default -> "Foreman";
+		};
+		String head = provider + " backend can't authenticate";
+		String fallback = switch (fs.backend()) {
+			case CODEX -> "run `codex login`, then reconnect the Foreman";
+			case CLAUDE -> "run `claude` and /login, then restart the Foreman";
+			default -> "check the configured backend login and reconnect the Foreman";
+		};
+		String msg = fs.message() != null ? fs.message() : fallback;
 		int maxW = Math.min(360, g.guiWidth() - 40);
 		var lines = TextUtil.wrap(font, msg, maxW - 34);
 		Kit.Padding p = Kit.padding("panel_paper");
 		int w = Math.min(maxW, Math.max(font.width(head), lines.stream().mapToInt(font::width).max().orElse(0)) + 34 + p.left() + p.right() - 16);
 		int h = p.top() + 10 + lines.size() * 10 + p.bottom();
 		int x = (g.guiWidth() - w) / 2;
-		int y = MARGIN;
+		int y = GoalBar.centeredTop();
 		Panels.panel(g, x, y, w, h);
 		long now = Util.getMillis();
 		float t = (float) Math.sin((now % 1200) / 1200.0 * Math.PI * 2) * 0.5f + 0.5f;

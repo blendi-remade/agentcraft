@@ -1,12 +1,12 @@
 # AgentCraft — Spec
 
-Minecraft as a spatial UI for real, multi-agent Claude work. The user should be able to use this
+Minecraft as a spatial UI for real, multi-agent Codex/Claude work. The user should be able to use this
 **for their actual daily work**: practicality is a hard requirement, equal to the visual bar.
 
 ## North star
 
-The user launches one command, walks into their HQ, types a goal ("add OAuth to life-tracker"),
-and watches a team of Claude agents split it into tasks, work in real git worktrees of a real
+The user launches one command, walks into their HQ, submits a goal (`/goal add OAuth to life-tracker`),
+and watches a team of coding agents split it into tasks, work in real git worktrees of a real
 repo, talk to each other, show progress physically, and come to the user for decisions. The user
 can review diffs, approve merges, and steer agents without ever leaving the game — and nothing
 of value is lost if the game closes, because the game is only a view.
@@ -15,8 +15,8 @@ of value is lost if the game closes, because the game is only a view.
 
 ```
 Minecraft 26.3 (Fabric mod "agentcraft", Java 25)          Foreman (Node 22 + TypeScript)
- ├─ integrated server side: entities, blocks, HQ builder <-WS-> ├─ AgentManager (Claude Agent SDK sessions)
- ├─ client side: screens, renderers, HUD, keybinds           │   backends: "claude" (real) | "sim" (scripted)
+ ├─ integrated server side: entities, blocks, HQ builder <-WS-> ├─ SharedRunner (Codex/Claude adapters)
+ ├─ client side: screens, renderers, HUD, keybinds           │   initial harness: "codex" | "claude"; "sim" scripted
  └─ DevBridge: camera / screenshot / scene control           ├─ TaskGraph (persisted JSON)
                                                              ├─ MessageBus (agent<->agent, agent<->user)
                                                              ├─ Memory (markdown files, shared + per-agent)
@@ -97,7 +97,8 @@ served **by the mod client**:
    branch `agentcraft/<agent>/<task>`. **Never push, never touch the user's checked-out branch,
    never merge without an explicit user `merge` decision.**
 2. **Command console** (keybind `` ` `` or `Enter` on a terminal block): one input line with
-   prefixes — plain text = new goal; `@name msg` = message agent; `/answer`, `/repo add <path>`,
+   prefixes — plain text = conversation with Marlow (also steers an active goal);
+   `/goal text` = new goal; `@name msg` / `@all msg` = existing message routing; `/answer`, `/repo add <path>`,
    `/pause @name`. Autocomplete for agent names. This is the fast path; walking is optional.
 3. **Readable text**: logs/diffs/plans rendered crisp (vanilla font, proper scaling), scrollable,
    syntax-tinted diffs (+ green / - red), selectable agent, search not required v1.

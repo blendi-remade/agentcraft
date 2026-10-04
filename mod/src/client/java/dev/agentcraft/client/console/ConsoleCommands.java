@@ -23,7 +23,8 @@ import org.jspecify.annotations.Nullable;
  * thread), no Minecraft types, so every rule here can be exercised with {@code dev.console.parse}.
  *
  * <pre>
- * plain text                       goal.submit (asks which repo when there are several)
+ * plain text                       user.message to Marlow (also steers an active goal)
+ * /goal text                       goal.submit (asks which repo when there are several)
  * @name text  /  @all text         user.message
  * /answer [dN] &lt;n|label&gt; [text]    decision.answer (n is 1-based, as on the decision buttons)
  * /repo add &lt;path&gt;   /repos         repo.add / list repos
@@ -96,6 +97,7 @@ public final class ConsoleCommands {
 	}
 
 	public static final List<Command> COMMANDS = List.of(
+		new Command("goal", "/goal <text>", "start a new goal for Marlow (several repos: you pick one)"),
 		new Command("answer", "/answer [d4] <n|option> [text]", "answer an open decision (n = button number)"),
 		new Command("decide", "/decide", "open the decision queue (J)"),
 		new Command("diff", "/diff [worktree|@agent]", "review a worktree's diff"),
@@ -128,7 +130,7 @@ public final class ConsoleCommands {
 		if (trimmed.startsWith("/")) {
 			return parseCommand(trimmed, s);
 		}
-		return goal(trimmed, s);
+		return new Message("marlow", trimmed);
 	}
 
 	private static Intent goal(String text, ForemanState s) {

@@ -2,15 +2,17 @@
 
 # AgentCraft
 
-**A team of Claude agents doing real work on your code, inside a Minecraft studio you can walk around in.**
+**A team of coding agents doing real work on your code, inside a Minecraft studio you can walk around in.
 
-*Powered by Claude*
+This fork adds a local Codex backend, mixed Codex/Claude teams and authenticated dedicated-server multiplayer. Single-harness teams and single-player workflows remain available.**
+
+*Powered by local Codex and Claude Code*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-c9a227)](LICENSE)
 [![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
 [![Fabric](https://img.shields.io/badge/mod%20loader-Fabric-d97757)](https://fabricmc.net)
 [![Claude Agent SDK](https://img.shields.io/badge/agents-Claude%20Agent%20SDK-2fa3a0)](https://code.claude.com/docs/en/agent-sdk/overview)
-[![Tests](https://img.shields.io/badge/tests-482%20passing-3b2a20)](foreman/test)
+[![Tests](https://img.shields.io/badge/tests-local%20qualification-3b2a20)](docs/contribution-handoff.md)
 
 <img src="docs/img/readme/hero.jpg" alt="The AgentCraft HQ at golden hour" width="100%">
 
@@ -20,7 +22,7 @@
 
 Multi-agent coding usually means a wall of terminal text. AgentCraft turns it into a place.
 
-You type a goal. A lead agent reads your repo, writes a plan and pins tasks to a wall. Workers walk to
+You submit `/goal <text>`. A lead agent reads your repo, writes a plan and pins tasks to a wall. Workers walk to
 their desks, sit down and start coding in their own git worktrees while their monitors stream every
 file they read and every line they change. When a call is genuinely yours, an agent walks over to
 you with a question. When work is ready, you review the real diff and press **Merge**. Nothing
@@ -36,7 +38,7 @@ Close the game and the agents keep working. Open it again and the studio catches
 <tr>
 <td width="50%" valign="top">
 
-**1. You give a goal.** Press <kbd>`</kbd> and type it. `@juniper` messages a specific agent, with
+**1. You give a goal.** Press <kbd>`</kbd> and type `/goal Add OAuth to life-tracker`. Plain text talks to Marlow and can steer an active goal. `@juniper` messages a specific agent, with
 Tab completion.
 
 <img src="docs/img/readme/console.jpg" alt="The command console with agent autocomplete">
@@ -168,7 +170,11 @@ AgentCraft is built to point at code you care about.
 **You need:** Windows 10 or 11, or macOS, Java 25, Node 22+, git, and a copy of
 Minecraft: Java Edition.
 
-**For the real agents** you need Claude API access, either of these:
+**For Codex agents**, install the Codex CLI and sign in locally with `codex login`.
+Check it with `codex login status`, then use `--backend codex` (macOS) or
+`-Backend codex` (Windows). See [Codex and multiplayer](#codex-and-dedicated-server-multiplayer).
+
+**For Claude agents** you need Claude API access, either of these:
 
 - `ANTHROPIC_API_KEY`: create a key at [console.anthropic.com](https://console.anthropic.com), then
   `setx ANTHROPIC_API_KEY sk-ant-...` and open a new terminal.
@@ -230,10 +236,11 @@ the first time; in an older world, rebuild it with `/agentcraft hq`.
 
 All keys can be rebound in Options, Controls.
 
-**Console commands.** Plain text starts a new goal. `@name message` talks to an agent.
+**Console commands.** Plain text talks to Marlow. `/goal <text>` explicitly starts work; with several repositories, choose the target before submitting. `@name message` and `@all message` keep their existing routing. Messages can also steer an active goal.
 
 | Command | |
 |---|---|
+| `/goal <text>` | Start a new goal for Marlow |
 | `/answer [d4] <n or option> [text]` | Answer an open decision |
 | `/diff [worktree or @agent]` | Review a worktree's changes |
 | `/status` | Goal, agents, tasks, decisions and spend |
@@ -253,7 +260,7 @@ flowchart LR
         UI["Console, decisions,<br/>diff review, library"]
     end
     subgraph foreman ["Foreman (Node + TypeScript)"]
-        Team["Lead + workers<br/>(Claude Agent SDK)"]
+        Team["One shared runner<br/>Codex / Claude roles"]
         State["Task graph, messages,<br/>memory, decisions"]
         Git["Worktrees, diffs,<br/>approved merges"]
     end
@@ -264,7 +271,7 @@ flowchart LR
 
 - **The Foreman** (`foreman/`) runs the agents and owns all the state: tasks and their
   dependencies, messages, shared memory, decisions and worktrees. Everything is saved to disk and
-  Claude sessions resume by id, so it survives restarts and crashes.
+  Provider sessions are saved separately and interrupted jobs retain their provider and job kind on restart.
 - **The mod** (`mod/`) is the window and the controls. It draws what the Foreman knows and sends
   back what you decide. If the game closes, no work is lost.
 - **The sim backend** is a scripted team that exercises every feature with real git edits. It powers
@@ -310,7 +317,7 @@ the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim b
 
 | Path | What lives there |
 |---|---|
-| [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety, 482 tests |
+| [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety and tests |
 | [`mod/`](mod) | The Fabric mod: HQ builder, agents, displays, screens, HUD |
 | [`assets-src/`](assets-src) | Scripts that generate every skin, block texture and UI sprite |
 | [`tools/`](tools) | Launcher, stop script, DevBridge CLI, screenshot and QA runner |
@@ -321,7 +328,7 @@ the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim b
 ## Development
 
 ```powershell
-cd foreman; npm test                       # 482 tests
+cd foreman; npm run check                 # typecheck, tests, protocol docs
 cd mod; .\gradlew.bat build                # the mod
 node tools/qa.mjs --home .agentcraft-home  # capture the 10 shot QA gallery
 ```
@@ -340,9 +347,8 @@ AgentCraft is young and has been used by one person on one machine. Today it is:
 
 - **Windows and macOS development launchers.** Both platforms have desktop notifications when
   the agents need a decision. macOS has been tested on Apple Silicon; Intel Macs are not yet tested.
-- **Singleplayer,** one studio per world, on **Minecraft 26.3**.
-- **Run through the development client** (`gradlew runClient`). A regular mod release for normal
-  launchers is planned.
+- **Singleplayer and dedicated multiplayer** on **Minecraft 26.3**, with one shared studio and an owner-authorized Foreman.
+- **Development client or normal Fabric launchers.** This fork includes a standalone mod jar and a Prism import package.
 
 Issues and ideas are welcome.
 
@@ -359,3 +365,63 @@ not affiliated with Mojang, Microsoft or Anthropic.
 <br>
 <sub>Built with Claude.</sub>
 </div>
+
+
+## Team harness, model and reasoning setup
+
+Launch with `--backend codex` to use Codex as the initial harness. Install and authenticate the
+provider CLIs on the Foreman host (Claude can also use its SDK bundled executable). Claude API authentication remains the default; `--use-claude-login` explicitly selects a personal subscription login. On the first unconfigured
+owner connection, **Team setup** detects their availability and model catalogs. Choose **All
+Codex**, **All Claude**, or **Mixed team**, then **Choose…** for each lead, worker and reviewer
+role to select its provider, model and supported reasoning level. Catalogs depend on your local
+CLI and account; the gallery's model names are examples.
+
+Presets and role-picker selections are drafts until **Save team** validates all three roles.
+Current turns continue; saved choices apply to new turns. Individual agent overrides are kept
+unless you explicitly select their reset. An agent card's **Model** screen lets you preview
+Codex/Claude, apply a per-agent choice or restore **Role defaults**, and reopen **Team setup**.
+Unavailable providers show an error rather than silently switching harnesses.
+
+One Foreman and shared runner schedule both providers, run CI and open permission/merge decisions
+for the owner. A Claude reviewer does not start a second scheduler or approve its own merge.
+See [setup instructions and qualification limits](docs/qa/team-setup.md) and the
+[annotated setup gallery](docs/contribution-gallery.html).
+
+## Codex and dedicated-server multiplayer
+
+Use the signed-in local Codex CLI with `--backend codex`; no OpenAI API
+key is copied into Minecraft. The Foreman runs Codex sessions on the host,
+streams their activity into the studio, and keeps the existing worktree,
+permission, review, and owner-approved merge workflow.
+
+```sh
+node tools/mac.mjs launch --backend codex --repo /path/to/authorized/repo --no-game
+```
+
+Install AgentCraft, Fabric API, and Polymer 0.18.2+26.3 on the dedicated
+server and on the coding player's Fabric client. Guests can join with plain
+Minecraft Java 26.3. Polymer projects custom studio blocks and items into
+vanilla equivalents for guests; studio clients retain the real custom models
+and displays. Each studio client reaches Foreman through Minecraft's
+authenticated connection. The Foreman WebSocket stays on host loopback.
+Set the server's `agentcraft.owner.uuid` property to the owner's Minecraft
+UUID; ordinary clients do not need the owner's Codex login or a Foreman URL.
+Only the configured owner directs coding work and approves permissions or
+merges. Other players can see the shared studio and submit owner-visible
+requests. Dedicated offline-mode ownership is disabled by default; the
+`agentcraft.owner.allowOffline=true` override is for isolated local tests.
+
+On a survival world, `/agentcraft hq studio at X Y Z` builds at the chosen
+location without changing the world's spawn or gamerules. `/agentcraft visit`
+goes to the published studio. Native `AgentCraft HQ` worlds keep the original
+creative studio setup. Type `@codex your message` in ordinary Minecraft chat,
+use `/agentcraft ask your message`, or open the in-game console.
+
+`tools/package_multiplayer.py` creates a Prism client ZIP and standalone jar.
+`tools/install_server.py` is a macOS helper for a specific existing managed Fabric
+server `control.py`, not a general server installer. It checks mod IDs, backs up
+replaced files, and writes host-specific Codex startup configuration without
+restarting the server. Local server state, world files and credentials are
+excluded from the client ZIP. See [packaging and setup](tools/README.md#multiplayer-packaging-and-managed-server-setup)
+for prerequisites and rollback, and the [contribution handoff](docs/contribution-handoff.md)
+for the complete checkpoint inventory, draft PR and qualification limits.

@@ -91,6 +91,7 @@ const memory: MemoryEntry = {
 type Ex<T> = Record<string, T>;
 
 export const SERVER_EXAMPLES: Ex<ServerMessage> = {
+  'snapshot.part': {v:1,type:'snapshot.part',transferId:'example',index:0,total:1,body:'{"type":"snapshot"}'},
   snapshot: {
     v: 1,
     type: 'snapshot',
@@ -190,6 +191,10 @@ export const CLIENT_EXAMPLES: Ex<ClientMessage> = {
   'user.message': { v: 1, type: 'user.message', id: 'c13', to: 'all', text: '@kit please also cover #tags with emoji' },
   'decision.answer': { v: 1, type: 'decision.answer', id: 'c14', decisionId: 'd2', option: 'Request changes', text: 'Export TAG_RE so format.ts can reuse it.' },
   'task.action': { v: 1, type: 'task.action', id: 'c15', taskId: 't5', action: 'reassign', arg: 'wren' },
+  'harness.detect': { v: 1, type: 'harness.detect', id: 'c-harnesses', refresh: true },
+  'team.configure': { v: 1, type: 'team.configure', id: 'c-team', roles: {lead:{provider:'codex'}, worker:{provider:'codex'}, reviewer:{provider:'claude',model:'sonnet',effort:'high'}} },
+  'agent.models': { v: 1, type: 'agent.models', id: 'c-models', agentId: 'marlow' },
+  'agent.configure': { v: 1, type: 'agent.configure', id: 'c-configure', agentId: 'marlow', model: 'gpt-6-astra', effort: 'medium' },
   'agent.action': { v: 1, type: 'agent.action', id: 'c16', agentId: 'juniper', action: 'pause' },
   'diff.request': { v: 1, type: 'diff.request', id: 'c17', requestId: 'r7', repoId: 'demo-app', worktree: 'kit-t2' },
   'repo.add': { v: 1, type: 'repo.add', id: 'c18', path: 'C:\\Projects\\agentcraft\\sandbox\\demo-app' },

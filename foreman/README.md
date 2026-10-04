@@ -1,6 +1,6 @@
 # AgentCraft Foreman
 
-The Foreman is the brain of AgentCraft: a Node 22 + TypeScript service that runs a team of Claude
+The Foreman is the brain of AgentCraft: a Node 22+ and TypeScript service that runs a team of Codex and/or Claude
 agents (one lead, up to five workers) on a real git repo and streams everything to the Minecraft
 mod over a WebSocket. The game is only a view. The Foreman owns all state, keeps working while
 Minecraft is closed, and survives restarts.
@@ -19,7 +19,9 @@ Minecraft is closed, and survives restarts.
      |- RepoManager   src/repos.ts       repos, per-task worktrees, structured diffs, guarded merges
      |- Notifier      src/notifier.ts    desktop notification + console bell when you are needed
      |- Store         src/store.ts       atomic JSON state + JSONL logs under AGENTCRAFT_HOME
-     `- Backend       claude: src/agents/claude/  (Claude Agent SDK sessions)
+     `- Backend       shared: src/agents/shared-runner.ts (one scheduler and approval flow)
+                        claude: src/agents/claude/ (Claude Agent SDK adapter)
+                        codex: src/agents/codex/ (local app-server adapter)
                       sim:    src/agents/sim/     (deterministic scripted team, real git)
 ```
 
@@ -28,6 +30,10 @@ Minecraft is closed, and survives restarts.
 ```sh
 cd foreman
 npm install
+
+# Codex: install the CLI and sign in with `codex login` first
+codex login status
+npm run start -- --backend codex --repo /path/to/authorized/repo --profile codex
 
 # real agents: needs ANTHROPIC_API_KEY (or CLAUDE_CODE_USE_BEDROCK / _VERTEX / _FOUNDRY)
 npm run start -- --backend claude --repo C:\path\to\your\repo
@@ -45,7 +51,7 @@ npm run start -- --backend sim --profile showcase-late --reset --showcase late  
 npm run tui
 ```
 
-In the TUI (and in the mod's console) type:
+In the terminal TUI, type (its plain-text goal entry is unchanged):
 
 | input | does |
 | --- | --- |
@@ -57,6 +63,10 @@ In the TUI (and in the mod's console) type:
 | `/pause @kit`, `/resume @kit`, `/stop @kit`, `/spawn @tove` | steer agents (see Steering) |
 | `/task t3 cancel\|retry\|prioritize [n]\|reassign @wren` | steer tasks |
 | `/status`, `/tasks`, `/agents`, `/decisions`, `/memory [id]`, `/feed` | views |
+
+In the Minecraft console, plain text sends a conversation to Marlow; use `/goal <text>` to
+submit work and choose its repository. `@name` / `@all` messaging is unchanged. A message may
+steer an active goal. See [console mapping](../docs/console.md).
 
 `npm run tui -- --script scripts/sim-demo.script --transcript out.txt` replays a whole session
 unattended (`/wait d3`, `/wait goal done`, `/wait 2` are available in scripts);
@@ -71,7 +81,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 
 | flag / env | default | |
 | --- | --- | --- |
-| `--backend sim\|claude` / `AGENTCRAFT_BACKEND` | `claude` | |
+| `--backend sim\|claude\|codex` / `AGENTCRAFT_BACKEND` | `claude` | |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
 | `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
@@ -99,7 +109,47 @@ so launch scripts can find it; `<home>/foreman.json` holds the same for the firs
 it exits, another live profile takes its place). A second Foreman on a profile that is already
 running is refused (two would both write its `state.json`).
 
-## How the claude backend works
+## Codex backend
+
+Codex runs as a local `codex app-server` child process. Its existing host login stays
+on the host; the Minecraft client needs neither credentials nor a direct Foreman URL.
+Use `--codex-path /absolute/path/to/codex` (or `CODEX_CLI_PATH`) if it is not on PATH.
+Install the standalone CLI separately; the desktop app bundle is not used as a fallback. On Windows, standard npm `codex.cmd` installations resolve to the package JavaScript entry point and run through Node with literal arguments. For a custom shim, point `--codex-path` directly at `codex.exe` or `@openai/codex/bin/codex.js`.
+`--model`, `--lead-model`, `--worker-model`, `--effort` and `--lead-effort` select Codex
+settings; leaving them unset preserves app-server defaults. The Opus/Sonnet defaults
+and turn/budget caps in the table above describe Claude; do not assume Claude billing
+or caps apply to Codex. Shared team, CI, worktree and merge settings still apply.
+
+The adapter supplies AgentCraft dynamic tools, translates approvals into owner
+decisions, persists thread IDs, and streams turn activity. Disconnect/cancellation
+fixtures cover interrupted sessions, pending decisions and late events; they do not
+establish successful authenticated CLI operation on every installed Codex version.
+See [qualification and remaining runtime checks](../docs/contribution-handoff.md).
+
+Dedicated multiplayer uses the server relay over Minecraft's authenticated connection;
+the Foreman still listens only on `127.0.0.1`. Configure the owner's UUID on the server
+and leave the offline override disabled. Use a separate home/profile for a second
+server and a distinct Foreman port; do not reuse a running Claude profile to switch
+backends. Stop that profile first, or select a new profile.
+
+## Mixed-provider setup
+
+Both real backend flags install one `ExecutionBackend` and `SharedRunner`. `--backend codex`
+sets the initial provider; the in-game **Team setup** screen can then assign Codex or Claude to
+lead, worker and reviewer roles independently. Discovery uses standalone host CLIs and their
+local authentication/model catalogs. Models and reasoning levels are provider-specific.
+
+Team saves validate every role before changing saved settings. Current turns keep their frozen
+selection; new turns use the saved role settings. Per-agent overrides survive a team save unless
+explicitly reset. **Role defaults** clears an agent's provider and model overrides. Sessions use
+separate `codex:` and `claude:` namespaces; provider changes preserve the other provider's session.
+An unavailable provider is reported rather than silently substituted.
+
+The shared runner owns dispatch, concurrency, cancellation, recovery, CI, review and permission
+requests. The owner still answers merge decisions. Do not run a second backend to add a reviewer.
+Use [team setup](../docs/qa/team-setup.md) for the UI flow and exact qualification boundaries.
+
+## How real-provider work runs
 
 1. **Plan** (lead, read-only in your checkout): explores with Read/Grep/Glob, writes `Plan: ...` to
    shared memory, creates tasks with deps and assignees via `create_task`, may `ask_user`.

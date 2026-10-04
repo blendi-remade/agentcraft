@@ -576,7 +576,7 @@ public final class LibraryScreen extends Screen {
 	public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
 		double mx = e.x();
 		double my = e.y();
-		if (e.button() == 0) {
+		if (e.button() == InputConstants.MOUSE_BUTTON_LEFT) {
 			for (int i = 0; i < tabRects.size(); i++) {
 				int[] r = tabRects.get(i);
 				if (mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3]) {

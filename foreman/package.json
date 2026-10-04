@@ -3,7 +3,7 @@
   "version": "0.1.0",
   "private": true,
   "license": "MIT",
-  "description": "AgentCraft Foreman: multi-agent orchestrator (Claude Agent SDK) that the Minecraft mod renders.",
+  "description": "AgentCraft Foreman: multi-agent orchestrator (Codex or Claude) that the Minecraft mod renders.",
   "type": "module",
   "engines": {
     "node": ">=22"

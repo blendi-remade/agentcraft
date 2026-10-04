@@ -45,9 +45,10 @@ import org.jspecify.annotations.Nullable;
  * feed, per-agent log tails, the latest speech per agent, recent notifications, the Foreman status
  * and the link state.
  *
- * <p><b>Threading:</b> mutated only on the client (render) thread (the link parses frames on its
- * own thread and hands them over with {@code Minecraft.execute}). Read it from the client thread:
- * renderers, screens, HUD, client tick handlers. From other threads use
+ * <p><b>Threading:</b> each instance is mutated on exactly one owner thread: the Minecraft server
+ * thread for the authoritative relay model, or the client render thread for the local view. The
+ * network link hands parsed frames to that owner thread. Read the client instance from renderers,
+ * screens, HUD, and client tick handlers. From other threads use
  * {@code DevBridge.onClient(...)}. The getters return unmodifiable live views; copy if you keep
  * them. Maps iterate in Foreman order (snapshot order, new entries appended).
  *
@@ -79,7 +80,7 @@ public final class ForemanState {
 
 	private final List<ForemanListener> listeners = new CopyOnWriteArrayList<>();
 
-	ForemanState(LinkStatus initial) {
+	public ForemanState(LinkStatus initial) {
 		this.link = initial;
 	}
 
@@ -252,7 +253,7 @@ public final class ForemanState {
 
 	// ------------------------------------------------------------------ mutation (client thread, from ForemanLink)
 
-	void setLink(LinkStatus status) {
+	public void setLink(LinkStatus status) {
 		this.link = status;
 		fire(l -> l.onConnection(status));
 	}
@@ -269,7 +270,7 @@ public final class ForemanState {
 	 * A message from the live link. While {@link #setHold held}, it is queued instead of applied, so
 	 * a choreographed shot sees only what it injects; otherwise it is applied at once.
 	 */
-	void receive(String type, JsonObject json) {
+	public void receive(String type, JsonObject json) {
 		if (hold) {
 			held.addLast(new Object[] {type, json});
 			while (held.size() > HOLD_MAX) {

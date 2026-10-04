@@ -3,7 +3,7 @@
 	"id": "agentcraft",
 	"version": "${version}",
 	"name": "AgentCraft",
-	"description": "Minecraft as a spatial UI for real multi-agent Claude work.",
+	"description": "A multiplayer Minecraft studio for Claude and Codex coding agents.",
 	"authors": [
 		"Blendi"
 	],
@@ -29,6 +29,7 @@
 		"fabricloader": ">=0.19.5",
 		"minecraft": "~26.3",
 		"java": ">=25",
-		"fabric-api": "*"
+		"fabric-api": "*",
+		"polymer-core": ">=0.18.2"
 	}
 }

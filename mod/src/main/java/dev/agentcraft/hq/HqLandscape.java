@@ -82,12 +82,12 @@ final class HqLandscape {
 
 	/** Shapes the ground before anything is built: dirt under a grass top at the terrain height. */
 	static void ground(Plan p) {
-		int nx = p.maxX - p.minX + 1;
-		int nz = p.maxZ - p.minZ + 1;
+		int nx = p.localMaxX - p.localMinX + 1;
+		int nz = p.localMaxZ - p.localMinZ + 1;
 		int[] hs = new int[nx * nz];
-		for (int x = p.minX; x <= p.maxX; x++) {
-			for (int z = p.minZ; z <= p.maxZ; z++) {
-				hs[(x - p.minX) * nz + (z - p.minZ)] = terrainHeight(x, z);
+		for (int x = p.localMinX; x <= p.localMaxX; x++) {
+			for (int z = p.localMinZ; z <= p.localMaxZ; z++) {
+				hs[(x - p.localMinX) * nz + (z - p.localMinZ)] = terrainHeight(x, z);
 			}
 		}
 		// no cliffs: every step between neighbouring columns is at most one block, so the hills show
@@ -112,9 +112,9 @@ final class HqLandscape {
 				break;
 			}
 		}
-		for (int x = p.minX; x <= p.maxX; x++) {
-			for (int z = p.minZ; z <= p.maxZ; z++) {
-				int h = hs[(x - p.minX) * nz + (z - p.minZ)];
+		for (int x = p.localMinX; x <= p.localMaxX; x++) {
+			for (int z = p.localMinZ; z <= p.localMaxZ; z++) {
+				int h = hs[(x - p.localMinX) * nz + (z - p.localMinZ)];
 				if (h <= 0) {
 					continue;
 				}
@@ -760,8 +760,8 @@ final class HqLandscape {
 	}
 
 	private static void meadow(Plan p) {
-		for (int x = p.minX; x <= p.maxX; x++) {
-			for (int z = p.minZ; z <= p.maxZ; z++) {
+		for (int x = p.localMinX; x <= p.localMaxX; x++) {
+			for (int z = p.localMinZ; z <= p.localMaxZ; z++) {
 				if (!meadowAt(p, x, z)) {
 					continue;
 				}

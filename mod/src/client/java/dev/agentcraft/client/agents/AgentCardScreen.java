@@ -75,7 +75,7 @@ public final class AgentCardScreen extends Screen {
 	private int y0;
 	private int h;
 	private int logRows = 6;
-	private final Btn[] buttons = {new Btn("message"), new Btn("pause"), new Btn("stop")};
+	private final Btn[] buttons = {new Btn("message"), new Btn("pause"), new Btn("stop"), new Btn("model")};
 	private final Btn review = new Btn("review");
 	private final List<Btn> optionRows = new ArrayList<>();
 	private final Btn[] optionPool = {new Btn("option"), new Btn("option"), new Btn("option"), new Btn("option")};
@@ -442,7 +442,8 @@ public final class AgentCardScreen extends Screen {
 			hint(g, font, hx, y, ix + iw, "Esc", "close");
 		} else {
 			int right = ix + iw;
-			int hx = hint(g, font, ix, y, right, "M", "message");
+			int hx = hint(g, font, ix, y, right, "M", "msg");
+			hx = hint(g, font, hx, y, right, "O", "model");
 			if (ag.isActive()) {
 				hx = hint(g, font, hx, y, right, "P", ag.isPaused() ? "resume" : "pause");
 			}
@@ -584,15 +585,19 @@ public final class AgentCardScreen extends Screen {
 		stop.primary = false;
 		stop.disabled = !on;
 		int gap = 6;
-		int bw = (iw - 2 * gap) / 3;
+		int bw = (iw - (buttons.length - 1) * gap) / buttons.length;
 		msg.x = ix;
 		pause.x = ix + bw + gap;
 		stop.x = ix + 2 * (bw + gap);
+		buttons[3].label = "Model";
+		buttons[3].disabled = !Foreman.connected();
+		int column = 0;
 		for (Btn b : buttons) {
+			b.x = ix + column++ * (bw + gap);
 			b.y = y;
 			b.w = bw;
 		}
-		stop.w = iw - 2 * (bw + gap);
+		buttons[buttons.length - 1].w = iw - (buttons.length - 1) * (bw + gap);
 	}
 
 	private List<String> taskLines(Font font) {
@@ -761,7 +766,7 @@ public final class AgentCardScreen extends Screen {
 
 	@Override
 	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0) {
+		if (event.button() == InputConstants.MOUSE_BUTTON_LEFT) {
 			for (Btn b : buttons) {
 				if (b.hit(event.x(), event.y())) {
 					press(b.id);
@@ -802,6 +807,10 @@ public final class AgentCardScreen extends Screen {
 			return true;
 		}
 		int key = event.key();
+		if (key == InputConstants.KEY_O) {
+			press("model");
+			return true;
+		}
 		if (key == InputConstants.KEY_M) {
 			press("message");
 			if (field != null) {
@@ -903,6 +912,11 @@ public final class AgentCardScreen extends Screen {
 	private void press(String id) {
 		Agent ag = agent();
 		if (ag == null) {
+			return;
+		}
+		if (id.equals("model")) {
+			if (Foreman.connected()) this.minecraft.gui.setScreen(new AgentModelScreen(this, agentId));
+			else setStatus("The Foreman is offline", true);
 			return;
 		}
 		if (!live()) {

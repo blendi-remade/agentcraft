@@ -1,0 +1,650 @@
+<!doctype html>
+<html lang="en">
+  <meta charset="utf-8" /><meta
+    name="viewport"
+    content="width=device-width,initial-scale=1"
+  /><title>AgentCraft contribution evidence</title
+  ><style>
+    :root {
+      font-family: system-ui, sans-serif;
+      color: #202525;
+      background: #f6f5f0;
+    }
+    body {
+      max-width: 1100px;
+      margin: 48px auto;
+      padding: 0 24px;
+    }
+    h1 {
+      font-size: 36px;
+      letter-spacing: -1px;
+    }
+    h2 {
+      font-size: 25px;
+      margin-bottom: 8px;
+    }
+    p {
+      max-width: 80ch;
+      line-height: 1.55;
+    }
+    header {
+      border-bottom: 1px solid #d5d8d4;
+      padding-bottom: 24px;
+    }
+    .note {
+      padding: 16px 20px;
+      background: #e9eeed;
+      border-left: 4px solid #28665d;
+    }
+    section {
+      margin: 48px 0 64px;
+    }
+    figure {
+      position: relative;
+      margin: 24px 0 16px;
+      border: 1px solid #d5d8d4;
+      background: #111;
+      border-radius: 8px;
+      overflow: hidden;
+    }
+    img {
+      width: 100%;
+      height: auto;
+      display: block;
+    }
+    .marker {
+      position: absolute;
+      transform: translate(-50%, -50%);
+      width: 27px;
+      height: 27px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      background: #b32c38;
+      color: white;
+      border: 2px solid white;
+      font: bold 15px system-ui;
+      box-shadow: 0 2px 6px #0009;
+      pointer-events: none;
+    }
+    ol {
+      display: flex;
+      gap: 36px;
+      flex-wrap: wrap;
+      padding-left: 24px;
+      line-height: 1.5;
+    }
+    li {
+      max-width: 290px;
+    }
+    a {
+      color: #18594f;
+    }
+    footer {
+      border-top: 1px solid #d5d8d4;
+      padding-top: 20px;
+      font-size: 14px;
+    }
+    @media (max-width: 600px) {
+      body {
+        margin: 24px auto;
+        padding: 0 12px;
+      }
+      h1 {
+        font-size: 29px;
+      }
+      .marker {
+        width: 20px;
+        height: 20px;
+        font-size: 12px;
+      }
+      ol {
+        display: block;
+      }
+    }
+  </style>
+  <header>
+    <h1>AgentCraft contribution evidence</h1>
+    <p>
+      Sixteen real Minecraft captures from the isolated integration studio and
+      the existing survival world. Numbered overlays identify controls and
+      visible changes; click an image to inspect the untouched original.
+    </p>
+    <p class="note">
+      These captures show rendered setup, interaction and recovery states.
+      Keyboard sequences, save readback and restart persistence are separately
+      reported runtime observations; a screenshot cannot prove them. JVM
+      mouse-handler tests cover dispatch; native pointer automation did not
+      establish physical clicks. See
+      <a href="qa/team-setup.md">qualification notes</a> and
+      <a href="qa/agent-card-mouse.md">mouse verification limits</a>. The
+      contribution notes describe backend and preservation checks.
+    </p>
+  </header>
+  <section id="setup-detected">
+    <h2>CLI and model discovery</h2>
+    <p>
+      The screenshot displays detected standalone CLI versions and setup
+      presets. First-connection detection is reported in the qualification
+      notes; model availability depends on the host CLI and account.
+    </p>
+    <figure>
+      <a
+        href="img/contribution/setup-detected.png"
+        aria-label="Open original screenshot"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/setup-detected.png"
+          alt="CLI and model discovery"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 26%; top: 28%"
+        title="Detected CLI versions"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 26%; top: 35%"
+        title="Single-harness and mixed presets"
+        >2</span
+      ><span
+        class="marker"
+        style="left: 26%; top: 71%"
+        title="Explicit Save team action"
+        >3</span
+      >
+    </figure>
+    <ol>
+      <li>Detected CLI versions</li>
+      <li>Single-harness and mixed presets</li>
+      <li>Explicit Save team action</li>
+    </ol>
+  </section>
+  <section id="setup-all-claude">
+    <h2>One harness for every role</h2>
+    <p>The all-Claude preset is an unsaved draft until the owner saves it.</p>
+    <figure>
+      <a
+        href="img/contribution/setup-all-claude.png"
+        aria-label="Open original screenshot"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/setup-all-claude.png"
+          alt="One harness for every role"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 26%; top: 39%"
+        title="Lead, worker and reviewer use Claude"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 26%; top: 66%"
+        title="Individual overrides are preserved by default"
+        >2</span
+      >
+    </figure>
+    <ol>
+      <li>Lead, worker and reviewer use Claude</li>
+      <li>Individual overrides are preserved by default</li>
+    </ol>
+  </section>
+  <section id="setup-codex-worker-high">
+    <h2>Codex model and reasoning</h2>
+    <p>
+      Available models come from the installed CLI catalog. GPT-6.1-Sol is
+      selected with high reasoning.
+    </p>
+    <figure>
+      <a
+        href="img/contribution/setup-codex-worker-high.png"
+        aria-label="Open original screenshot"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/setup-codex-worker-high.png"
+          alt="Codex model and reasoning"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 28%; top: 35%"
+        title="CLI model catalog"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 28%; top: 64%"
+        title="Supported reasoning levels"
+        >2</span
+      >
+    </figure>
+    <ol>
+      <li>CLI model catalog</li>
+      <li>Supported reasoning levels</li>
+    </ol>
+  </section>
+  <section id="setup-claude-reviewer-high">
+    <h2>Claude model and reasoning</h2>
+    <p>
+      The same setup flow supports Claude. Sonnet is selected with high
+      reasoning for review.
+    </p>
+    <figure>
+      <a
+        href="img/contribution/setup-claude-reviewer-high.png"
+        aria-label="Open original screenshot"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/setup-claude-reviewer-high.png"
+          alt="Claude model and reasoning"
+          loading="lazy" /></a
+      ><span class="marker" style="left: 28%; top: 30%" title="Harness selector"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 28%; top: 43%"
+        title="Claude model catalog"
+        >2</span
+      ><span class="marker" style="left: 28%; top: 64%" title="Reasoning choice"
+        >3</span
+      >
+    </figure>
+    <ol>
+      <li>Harness selector</li>
+      <li>Claude model catalog</li>
+      <li>Reasoning choice</li>
+    </ol>
+  </section>
+  <section id="setup-mixed-saved">
+    <h2>Mixed team saved in Minecraft</h2>
+    <p>
+      The screenshot shows Astra/medium for lead, GPT-6.1/high for workers,
+      Claude Sonnet/high for review and the saved-state message. Exact readback
+      and persistence after Foreman restart were reported separately by the
+      integration lead.
+    </p>
+    <figure>
+      <a
+        href="img/contribution/setup-mixed-saved.png"
+        aria-label="Open original screenshot"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/setup-mixed-saved.png"
+          alt="Mixed team saved in Minecraft"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 26%; top: 39%"
+        title="Codex lead and worker selections"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 26%; top: 55%"
+        title="Claude reviewer selection"
+        >2</span
+      ><span
+        class="marker"
+        style="left: 26%; top: 70%"
+        title="Confirmed saved state"
+        >3</span
+      >
+    </figure>
+    <ol>
+      <li>Codex lead and worker selections</li>
+      <li>Claude reviewer selection</li>
+      <li>Confirmed saved state</li>
+    </ol>
+  </section>
+  <section id="agent-model-astra-medium">
+    <h2>Per-agent model settings</h2>
+    <p>
+      The individual model selector displays current-turn state and next-turn
+      settings separately. This earlier capture predates the keyboard shortcut
+      labels; the next section shows the updated controls.
+    </p>
+    <figure>
+      <a
+        href="img/contribution/agent-model-astra-medium.png"
+        aria-label="Open original screenshot"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/agent-model-astra-medium.png"
+          alt="Per-agent model settings"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 29%; top: 25%"
+        title="Current and next turn"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 29%; top: 31%"
+        title="Harness and team controls"
+        >2</span
+      ><span
+        class="marker"
+        style="left: 29%; top: 71%"
+        title="Apply or restore role defaults"
+        >3</span
+      >
+    </figure>
+    <ol>
+      <li>Current and next turn</li>
+      <li>Harness and team controls</li>
+      <li>Apply or restore role defaults</li>
+    </ol>
+  </section>
+  <section id="agent-model-codex-shortcuts">
+    <h2>Per-agent model controls</h2>
+    <p>
+      Marlow’s saved next turn remains Astra with medium reasoning. Provider,
+      team, defaults and retry controls have visible keyboard shortcuts.
+    </p>
+    <figure>
+      <a href="img/contribution/agent-model-codex-shortcuts.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/agent-model-codex-shortcuts.png"
+          alt="Per-agent model controls"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 29%; top: 26%"
+        title="Saved next-turn selection"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 29%; top: 31%"
+        title="Provider and team controls"
+        >2</span
+      ><span
+        class="marker"
+        style="left: 29%; top: 72%"
+        title="Apply is explicit"
+        >3</span
+      >
+    </figure>
+    <ol>
+      <li>Saved next-turn selection</li>
+      <li>Provider and team controls</li>
+      <li>Apply is explicit</li>
+    </ol>
+  </section>
+  <section id="agent-model-claude-shortcuts">
+    <h2>Claude preview without changing the agent</h2>
+    <p>
+      The Claude catalog is available in the same selector. Opening this preview
+      leaves the saved Codex selection unchanged until Apply.
+    </p>
+    <figure>
+      <a href="img/contribution/agent-model-claude-shortcuts.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/agent-model-claude-shortcuts.png"
+          alt="Claude preview without changing the agent"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 29%; top: 26%"
+        title="Saved Codex choice remains unchanged"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 29%; top: 41%"
+        title="Detected Claude catalog"
+        >2</span
+      ><span
+        class="marker"
+        style="left: 29%; top: 65%"
+        title="Reasoning selection"
+        >3</span
+      >
+    </figure>
+    <ol>
+      <li>Saved Codex choice remains unchanged</li>
+      <li>Detected Claude catalog</li>
+      <li>Reasoning selection</li>
+    </ol>
+  </section>
+  <section id="slash-menu-scrolled">
+    <h2>Slash completion follows the selection</h2>
+    <p>
+      Using Down past the first six results scrolls the menu. The eighth
+      command, spawn, remains highlighted and visible.
+    </p>
+    <figure>
+      <a href="img/contribution/slash-menu-scrolled.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/slash-menu-scrolled.png"
+          alt="Slash completion follows the selection"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 28%; top: 80%"
+        title="Menu has advanced beyond its first commands"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 28%; top: 90%"
+        title="Selected spawn remains visible"
+        >2</span
+      >
+    </figure>
+    <ol>
+      <li>Menu has advanced beyond its first commands</li>
+      <li>Selected spawn remains visible</li>
+    </ol>
+  </section>
+  <section id="console-plain-chat">
+    <h2>Conversation without an accidental goal</h2>
+    <p>
+      A plain message sent from the Minecraft console received Marlow’s
+      greeting. Foreman readback confirmed zero goals and zero tasks. Use /goal
+      when asking the team to start work.
+    </p>
+    <figure>
+      <a href="img/contribution/console-plain-chat.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/console-plain-chat.png"
+          alt="Conversation without an accidental goal"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 46%; top: 47%"
+        title="Conversation appears in the console"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 46%; top: 96%"
+        title="Plain text routes to Marlow"
+        >2</span
+      >
+    </figure>
+    <ol>
+      <li>Conversation appears in the console</li>
+      <li>Plain text routes to Marlow</li>
+    </ol>
+  </section>
+  <section id="survival-restored-clean-shader">
+    <h2>Notch clearance and shader compatibility</h2>
+    <p>
+      The original survival world was rejoined at the saved position with the
+      existing shader configuration. The top-center panel sits below the display
+      edge; this captured frame has none of the earlier stretched triangles.
+      This is a visual check, not a performance benchmark.
+    </p>
+    <figure>
+      <a href="img/contribution/survival-restored-clean-shader.png"
+        ><img
+          width="3024"
+          height="1964"
+          src="img/contribution/survival-restored-clean-shader.png"
+          alt="Notch clearance and shader compatibility"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 29%; top: 7%"
+        title="Lowered top-center HUD"
+        >1</span
+      ><span
+        class="marker"
+        style="left: 71%; top: 45%"
+        title="Rendered world and NPC geometry"
+        >2</span
+      >
+    </figure>
+    <ol>
+      <li>Lowered top-center HUD</li>
+      <li>Rendered world and NPC geometry</li>
+    </ol>
+  </section>
+  <section id="vanilla-guest-release">
+    <h2>A guest joins without client mods</h2>
+    <p>
+      A plain Minecraft 26.3 client joined the loopback integration server and
+      rendered the studio using vanilla block equivalents. The client manifest
+      has no mod loader. This capture uses an offline test account and does not
+      establish a second authenticated player session.
+    </p>
+    <figure>
+      <a href="img/contribution/vanilla-guest-release.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/vanilla-guest-release.png"
+          alt="A guest joins without client mods"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 47%; top: 26%"
+        title="Studio blocks render as vanilla equivalents"
+        >1</span
+      >
+    </figure>
+    <ol>
+      <li>Studio blocks render as vanilla equivalents</li>
+    </ol>
+  </section>
+  <section id="vanilla-guest-owner-denial">
+    <h2>Guests cannot submit coding prompts</h2>
+    <p>
+      The vanilla guest tried /agentcraft ask and received the owner-only
+      rejection. Foreman readback remained at zero goals and zero tasks. Normal
+      Minecraft chat remains available.
+    </p>
+    <figure>
+      <a href="img/contribution/vanilla-guest-owner-denial.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/vanilla-guest-owner-denial.png"
+          alt="Guests cannot submit coding prompts"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 37%; top: 87%"
+        title="Owner-only prompt rejection"
+        >1</span
+      >
+    </figure>
+    <ol>
+      <li>Owner-only prompt rejection</li>
+    </ol>
+  </section>
+  <section id="owner-failed-turn-card">
+    <h2>Recovery controls remain available after a failed turn</h2>
+    <p>
+      An isolated Codex process was deliberately interrupted during QA. Marlow
+      reports the failed turn and keeps Message and Model available. Native
+      keyboard shortcuts were verified; physical mouse automation remains
+      unverified.
+    </p>
+    <figure>
+      <a href="img/contribution/owner-failed-turn-card.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/owner-failed-turn-card.png"
+          alt="Recovery controls remain available after a failed turn"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 36%; top: 62%"
+        title="Failed turn with visible Message and Model controls"
+        >1</span
+      >
+    </figure>
+    <ol>
+      <li>Failed turn with visible Message and Model controls</li>
+    </ol>
+  </section>
+  <section id="owner-failed-turn-model-access">
+    <h2>Model opens from a failed agent card</h2>
+    <p>
+      Pressing the displayed O shortcut on the failed-turn card opened the model
+      catalog. The saved Astra/medium selection remained visible.
+    </p>
+    <figure>
+      <a href="img/contribution/owner-failed-turn-model-access.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/owner-failed-turn-model-access.png"
+          alt="Model opens from a failed agent card"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 29%; top: 26%"
+        title="Model selector available after the error"
+        >1</span
+      >
+    </figure>
+    <ol>
+      <li>Model selector available after the error</li>
+    </ol>
+  </section>
+  <section id="owner-turn-recovered">
+    <h2>A new message recovers the conversation</h2>
+    <p>
+      From the same failed card, M opened the addressed console. The owner sent
+      a recovery check and Marlow replied RECOVERED. Foreman remained
+      authenticated with zero goals and tasks; no game or server restart was
+      needed for this recovery.
+    </p>
+    <figure>
+      <a href="img/contribution/owner-turn-recovered.png"
+        ><img
+          width="1920"
+          height="1080"
+          src="img/contribution/owner-turn-recovered.png"
+          alt="A new message recovers the conversation"
+          loading="lazy" /></a
+      ><span
+        class="marker"
+        style="left: 46%; top: 75%"
+        title="Successful reply after interruption"
+        >1</span
+      >
+    </figure>
+    <ol>
+      <li>Successful reply after interruption</li>
+    </ol>
+  </section>
+  <footer>
+    Captured 2026-10-04. Sixteen original framebuffer captures are included;
+    annotation markers are a separate HTML layer. No generated game imagery or
+    modified screenshot pixels. Keyboard and state-readback checks are distinct
+    from mouse-handler regression tests. The contribution notes describe the
+    final live deployment and verification limits.
+  </footer>
+</html>

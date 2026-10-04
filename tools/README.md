@@ -9,6 +9,8 @@ Requires Node 22+, git, and Java 25. Install Java with `brew install openjdk@25`
 node tools/mac.mjs launch --backend sim             # free simulated team
 node tools/mac.mjs stop --profile sim
 node tools/mac.mjs launch --repo /path/to/repo --use-claude-login
+node tools/mac.mjs launch --backend codex --repo /path/to/repo --no-game
+node tools/mac.mjs stop --profile codex --foreman
 node tools/mac.mjs stop                            # save/quit game, stop Foreman
 ```
 
@@ -20,6 +22,16 @@ one component; `--no-wait` to return immediately while Minecraft builds. Repeat
 `artifacts/logs/mac-*.log` and `artifacts/run/mac-*.json`. `stop` only signals processes
 recorded by this launcher. macOS uses Notification Center for agent decisions.
 The screenshot QA command, `node tools/qa.mjs`, also uses this launcher on macOS.
+
+macOS supports `--backend sim|claude|codex`, repeatable `--repo PATH`, `--home`,
+`--profile`, `--port`, `--dev-port`, `--showcase busy|late`, `--reset`,
+`--summary-json` and the switches shown above. Stop accepts `--game`, `--foreman`
+and `--stop-daemon`. The Windows options below are not all macOS options:
+macOS has no `--dry-run`, `--gradle-home`, `--timeout-sec`, `--speed` or `--goal`.
+Pass Foreman options as repeated values, for example
+`--foreman-arg --goal --foreman-arg 'Describe this repository'`.
+`--dev` on macOS does **not** select a project-local home: pass `--home` explicitly
+for isolated QA. Codex requires an installed, signed-in CLI (`codex login status`).
 
 ## Windows
 
@@ -54,7 +66,7 @@ If the game of this checkout is already running it is reused (one client per che
 
 | parameter | default | |
 | --- | --- | --- |
-| `-Backend sim\|claude` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
+| `-Backend sim\|claude\|codex` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
 | `-Repo <path>[,<path>]` | | registered at start, or sent as `repo.add` to a running Foreman |
 | `-Profile <name>` | backend name; `showcase` / `showcase-late` | state lives in `<home>/<profile>` |
 | `-Showcase [busy\|late]` | | hold a static scripted state (QA screenshots); always a fresh (`--reset`) profile |
@@ -79,6 +91,90 @@ its state and releases `foreman.json`, like Ctrl+C in a terminal), then, after `
 start is left alone. `-Game` / `-Foreman` / `-Profile` / `-Home` / `-Port` narrow it down;
 `-FromSummary <launch summary>` stops exactly what one launch started; `-StopDaemon` also stops
 this checkout's Gradle daemon (never another checkout's).
+
+## Multiplayer packaging and managed-server setup
+
+Use Python 3, Java 25, Minecraft 26.3, Fabric Loader 0.19.5, Fabric API
+0.161.0+26.3 and Polymer bundled 0.18.2+26.3. Build from this checkout:
+
+```sh
+npm ci --prefix foreman
+npm ci --prefix tools
+sh mod/gradlew -p mod --no-daemon build
+python3 tools/package_multiplayer.py \
+  --jar mod/build/libs/agentcraft-0.1.0.jar \
+  --fabric-api /path/to/fabric-api-0.161.0+26.3.jar \
+  --polymer /path/to/polymer-bundled-0.18.2+26.3.jar \
+  --out dist/multiplayer
+```
+
+The script checks each jar's mod ID, then writes the standalone jar, Prism ZIP,
+`INSTALL.txt` and `SHA256SUMS`. IDs are not compatibility or provenance verification:
+obtain the matching versions from their publishers. Only the three supplied jars,
+instance settings, instructions and license enter the ZIP. No server address,
+world, Foreman state or login is bundled. Import the ZIP as a new Prism instance,
+select Java 25 and use your Minecraft account. Vanilla guests use Java 26.3.
+For an existing Fabric client, copy the three jars and add
+`-Dagentcraft.autoworld=0`; preserve existing instances/settings when trying it.
+
+For a general dedicated Fabric server, install the same three dependencies, run
+Foreman on that host with `--backend codex --repo /path/to/repo --profile minecraft`,
+and put these JVM properties **before** the server's `-jar` argument:
+
+```text
+-Dagentcraft.foreman.enabled=true
+-Dagentcraft.foreman.port=7878
+-Dagentcraft.owner.uuid=<authenticated-owner-UUID>
+```
+
+Keep `online-mode=true`. Do not enable `agentcraft.owner.allowOffline` for an
+authenticated setup. Minecraft carries the client relay; Foreman stays on loopback.
+Use the server operator's normal stop/start process for an approved installation.
+
+The optional `install_server.py` helper supports **macOS only**, because its
+bootstrap invokes `mac.mjs`. It expects an existing `mods/` directory and a
+`control.py` containing the exact `subprocess.Popen([JAVA, '-Xms512M', '-Xmx3G',
+'-XX:+UseG1GC',` launch shape, or its already-patched equivalent. That controller
+must supply `ROOT`, `JAVA`, `subprocess`, `json`, `os` and `pathlib`; Java must be
+a JDK 25 executable. It does not provision Fabric, Fabric API, Java, Node, Codex,
+authentication, server EULA or a network tunnel. Node and Codex must be on PATH,
+and `codex login status` must succeed for the account that will start the server.
+Prepare Foreman dependencies first and retain this checkout at a stable path.
+
+After stopping the target server and backing up its world using your usual process:
+
+```sh
+python3 tools/install_server.py --server-root /path/to/managed-server \
+  --jar mod/build/libs/agentcraft-0.1.0.jar \
+  --polymer /path/to/polymer-bundled-0.18.2+26.3.jar \
+  --owner-uuid '<authenticated-owner-UUID>' --owner-name 'Your name' \
+  --repository /path/to/authorized/repo --foreman-port 7878
+```
+
+Optional `--studio-x`, `--studio-y`, `--studio-z` default to `12288,200,12288`;
+`--test-offline` is only for isolated offline fixtures. `--polymer` may be omitted
+if a `polymer-bundled-*.jar` already exists in `mods/`. The helper does not start or
+restart anything. It writes `agentcraft-runtime.json` with absolute paths derived
+from this checkout, server, repo and PATH (not portable between machines), patches
+the controller and installs jars. Startup later uses a per-server hashed profile
+under `agentcraft-state/`; inspect the generated config and `agentcraft-launch.log`.
+Moving any of those paths requires regenerating the configuration. There is no
+dry-run, uninstall command, transaction rollback or automatic world backup.
+
+**Rollback:** with the target stopped, use the exact `backups/agentcraft-install-*`
+directory printed in the receipt. Restore its `control.py`, prior runtime JSON,
+AgentCraft jar and any replaced Polymer jar. If an item was newly introduced (no
+backup), remove only that introduced item. Preserve a list of preinstall mod names:
+the receipt records the AgentCraft hash, not a complete preinstall manifest. Do not
+remove a Polymer dependency used by other mods. Stop the corresponding Foreman
+profile via `mac.mjs stop --profile <foremanProfile> --foreman`; keep
+`agentcraft-state/` and worktrees for recovery. Restore a world backup separately
+if you later built an HQ; rolling back jars does not undo placed blocks. These
+instructions have not been exercised against the owner's active server.
+
+Packaging regression fixture: `python3 -m unittest tools/test_package_multiplayer.py`.
+For integrated evidence and owner runtime checks, see the
+[contribution handoff](../docs/contribution-handoff.md).
 
 ## Dev / QA tools
 

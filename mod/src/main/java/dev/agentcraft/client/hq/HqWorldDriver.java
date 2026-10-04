@@ -9,14 +9,12 @@ import dev.agentcraft.block.entity.DecisionPodiumBlockEntity;
 import dev.agentcraft.block.entity.MergeStationBlockEntity;
 import dev.agentcraft.block.entity.MonitorBlockEntity;
 import dev.agentcraft.block.entity.StatusLampBlockEntity;
-import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.DecisionKind;
 import dev.agentcraft.client.foreman.Protocol.Goal;
 import dev.agentcraft.client.foreman.Protocol.Repo;
-import dev.agentcraft.client.world.ServerTasks;
 import dev.agentcraft.layout.Anchor;
 import dev.agentcraft.layout.AnchorNames;
 import dev.agentcraft.layout.Anchors;
@@ -25,7 +23,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
-import net.minecraft.client.Minecraft;
+import net.fabricmc.fabric.api.event.lifecycle.v1.ServerTickEvents;
 import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.level.block.Block;
@@ -36,8 +34,7 @@ import net.minecraft.world.level.chunk.LevelChunk;
 import org.jspecify.annotations.Nullable;
 
 /**
- * Drives the HQ's world blocks from the Foreman state (client thread computes, the integrated
- * server applies, see {@link ServerTasks}):
+ * Drives the HQ's world blocks from the Foreman state on the authoritative server thread:
  * <ul>
  *   <li>status lamps by binding: {@code agent:<id>} (the agent's status family, the same one its
  *       nameplate shows: an idle/done agent with a decision waiting on you is {@code waiting}; off
@@ -65,13 +62,18 @@ public final class HqWorldDriver {
 	record Wanted(Map<String, LampStatus> lamps, boolean podiumOpen, boolean mergeActive, Map<String, Boolean> monitorLit) {
 	}
 
-	private static @Nullable Wanted last;
+	private static volatile @Nullable Wanted last;
 	private static long lastRevision = -1;
 	private static long lastLayout = -1;
 	private static int ticks;
 	private static volatile int lastChanged;
 
 	private HqWorldDriver() {
+	}
+
+	/** Install the authoritative block driver on the server tick. */
+	public static void init() {
+		ServerTickEvents.END_SERVER_TICK.register(server -> tick(server.overworld(), dev.agentcraft.server.ServerForemanRelay.state()));
 	}
 
 	/** Blocks changed by the last apply (QA / debugging). */
@@ -83,11 +85,7 @@ public final class HqWorldDriver {
 		return last;
 	}
 
-	static void tick(Minecraft mc) {
-		if (mc.level == null || mc.getSingleplayerServer() == null) {
-			return;
-		}
-		ForemanState st = Foreman.state();
+	private static void tick(ServerLevel level, ForemanState st) {
 		Anchors.Layout layout = Anchors.current();
 		if (st == null || !st.hasData() || st.isStale() || layout.isEmpty() || layout.bounds() == null) {
 			return;
@@ -106,7 +104,7 @@ public final class HqWorldDriver {
 			Anchors.Bounds b = layout.bounds();
 			List<BlockPos> podiumSignals = signalCenters(layout, AnchorNames.DECISION_PODIUM);
 			List<BlockPos> mergeSignals = signalCenters(layout, AnchorNames.MERGESTATION);
-			ServerTasks.run(level -> lastChanged = apply(level, w, b, podiumSignals, mergeSignals));
+			lastChanged = apply(level, w, b, podiumSignals, mergeSignals);
 		}
 	}
 

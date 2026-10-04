@@ -32,8 +32,8 @@ import java.util.function.Consumer;
 import org.jspecify.annotations.Nullable;
 
 /**
- * WebSocket client to the Foreman ({@code ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}}), using
- * {@code java.net.http} (no Origin header, as the Foreman requires). Sends {@code hello} on every
+ * Client-facing Foreman link. Multiplayer clients use the authenticated Minecraft play-channel
+ * relay; the legacy direct-WebSocket constructor remains available for local client tools. Sends {@code hello} on every
  * connect, hands each received message to {@link ForemanState} on the client thread, matches acks
  * and diffs to requests, and reconnects forever with backoff (0.25 s doubling up to 5 s). It never
  * blocks the render or server thread: all network work happens on its own daemon threads.
@@ -52,6 +52,8 @@ public final class ForemanLink {
 	private final String modVersion;
 	private final ForemanState state;
 	private final Executor clientThread;
+	private final @Nullable Consumer<JsonObject> relaySender;
+	private final @Nullable Runnable relayReconnect;
 	private final ScheduledExecutorService sched;
 	private final ExecutorService io;
 	private final HttpClient http;
@@ -72,10 +74,18 @@ public final class ForemanLink {
 	private final Object sendLock = new Object();
 
 	public ForemanLink(URI uri, String modVersion, ForemanState state, Executor clientThread, boolean enabled) {
+		this(uri, modVersion, state, clientThread, enabled, null, null);
+	}
+
+	/** Client facade for the Minecraft play-channel relay; the server alone opens the loopback socket. */
+	public ForemanLink(URI uri, String modVersion, ForemanState state, Executor clientThread, boolean enabled,
+		@Nullable Consumer<JsonObject> relaySender, @Nullable Runnable relayReconnect) {
 		this.uri = uri;
 		this.modVersion = modVersion;
 		this.state = state;
 		this.clientThread = clientThread;
+		this.relaySender = relaySender;
+		this.relayReconnect = relayReconnect;
 		this.status = new LinkStatus(enabled ? Phase.WAITING_RETRY : Phase.DISABLED, uri.toString(), 0, null,
 			System.currentTimeMillis(), System.currentTimeMillis(), false);
 		this.sched = Executors.newSingleThreadScheduledExecutor(r -> daemon(r, "AgentCraft-ForemanLink"));
@@ -96,13 +106,24 @@ public final class ForemanLink {
 			return;
 		}
 		running = true;
+		if (relaySender != null) {
+			// JOIN delivers the authoritative server status and current snapshot.
+			return;
+		}
 		sched.execute(this::connect);
 		sched.scheduleAtFixedRate(this::watchdog, 5, 5, TimeUnit.SECONDS);
 		AgentCraft.LOGGER.info("Foreman link started ({})", uri);
 	}
 
 	public synchronized void stop() {
+		snapshots.clear();
 		running = false;
+		if (relaySender != null) {
+			failPending("Minecraft connection closed");
+			sched.shutdownNow();
+			io.shutdownNow();
+			return;
+		}
 		WebSocket s = ws;
 		ws = null;
 		if (s != null) {
@@ -120,6 +141,12 @@ public final class ForemanLink {
 
 	/** Drop the current connection (if any) and connect again right away. */
 	public void reconnectNow() {
+		if (relaySender != null) {
+			if (relayReconnect != null) {
+				relayReconnect.run();
+			}
+			return;
+		}
 		sched.execute(() -> {
 			WebSocket s = ws;
 			if (s != null) {
@@ -177,7 +204,7 @@ public final class ForemanLink {
 					lastInbound = System.currentTimeMillis();
 					lastPing = lastInbound;
 					publish(status.with(Phase.HANDSHAKE, null, 0));
-					JsonObject hello = ForemanJson.msg("hello").put("modVersion", modVersion).put("protocol", Protocol.VERSION).put("client", "mod").json();
+					JsonObject hello = ForemanJson.msg("hello").put("modVersion", modVersion).put("protocol", Protocol.VERSION).put("client", "mod").put("snapshotParts", true).json();
 					sendRaw(socket, hello.toString());
 				});
 		} catch (Throwable t) {
@@ -191,6 +218,7 @@ public final class ForemanLink {
 			return; // a stale socket's late callback
 		}
 		generation.incrementAndGet();
+		snapshots.clear();
 		WebSocket s = ws;
 		ws = null;
 		if (s != null) {
@@ -318,6 +346,8 @@ public final class ForemanLink {
 		}
 	}
 
+	private final dev.agentcraft.network.SnapshotTransfer snapshots = new dev.agentcraft.network.SnapshotTransfer();
+
 	private void handle(String text) {
 		lastInbound = System.currentTimeMillis();
 		messages++;
@@ -327,7 +357,8 @@ public final class ForemanLink {
 			if (!el.isJsonObject()) {
 				return;
 			}
-			json = el.getAsJsonObject();
+			json = snapshots.accept(el.getAsJsonObject());
+			if (json == null) return;
 		} catch (Exception e) {
 			AgentCraft.LOGGER.warn("Foreman sent invalid JSON ({} chars)", text.length());
 			return;
@@ -387,6 +418,25 @@ public final class ForemanLink {
 		}
 	}
 
+	/** Receive an unchanged Foreman JSON frame routed through the server's authenticated play channel. */
+	public void receiveRelayed(String text) {
+		if (relaySender != null) {
+			handle(text);
+		}
+	}
+
+	/** Apply the server-owned WebSocket link status to this client's facade. */
+	public void updateRelayStatus(LinkStatus next) {
+		if (relaySender == null) {
+			return;
+		}
+		status = next;
+		if (!next.synced()) {
+			failPending("Minecraft relay disconnected: " + next.phaseName());
+		}
+		clientThread.execute(() -> state.setLink(next));
+	}
+
 	// ------------------------------------------------------------------ send
 
 	/**
@@ -397,7 +447,7 @@ public final class ForemanLink {
 	public CompletableFuture<Ack> send(JsonObject message) {
 		CompletableFuture<Ack> raw = new CompletableFuture<>();
 		WebSocket s = ws;
-		if (s == null || status.phase() != Phase.SYNCED) {
+		if ((relaySender == null && s == null) || status.phase() != Phase.SYNCED) {
 			raw.completeExceptionally(new IllegalStateException("Foreman not connected (" + status.phaseName() + ")"));
 			return onClientThread(raw);
 		}
@@ -413,10 +463,18 @@ public final class ForemanLink {
 		}
 		pendingAcks.put(id, raw);
 		raw.orTimeout(ACK_TIMEOUT_MS, TimeUnit.MILLISECONDS).whenComplete((a, e) -> pendingAcks.remove(id));
-		sendRaw(s, message.toString()).exceptionally(t -> {
-			raw.completeExceptionally(t);
-			return null;
-		});
+		if (relaySender != null) {
+			try {
+				relaySender.accept(message.deepCopy());
+			} catch (Throwable t) {
+				raw.completeExceptionally(t);
+			}
+		} else {
+			sendRaw(s, message.toString()).exceptionally(t -> {
+				raw.completeExceptionally(t);
+				return null;
+			});
+		}
 		return onClientThread(raw);
 	}
 

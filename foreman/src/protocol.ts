@@ -61,12 +61,12 @@ export type NotifyLevel = z.infer<typeof NotifyLevel>;
 export const WorktreeStatus = z.enum(['active', 'merged', 'abandoned']);
 export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
-export const BackendName = z.enum(['sim', 'claude']);
+export const BackendName = z.enum(['sim', 'claude', 'codex']);
 export type BackendName = z.infer<typeof BackendName>;
 
 export const AuthStatus = z
   .enum(['ok', 'failed', 'unknown', 'checking'])
-  .describe('`failed` must be shown loudly (in-world banner): the claude backend cannot run.');
+  .describe('`failed` must be shown loudly (in-world banner): the selected real-agent backend cannot run.');
 export type AuthStatus = z.infer<typeof AuthStatus>;
 
 const Id = z.string().min(1);
@@ -278,6 +278,11 @@ export const SnapshotMsg = z.object({
   feed: z.array(FeedItem).describe('most recent feed items, oldest first (<= 200)'),
   logs: z.array(AgentLogs).describe('recent log tail per agent (<= 60 entries each)'),
 });
+export const SnapshotPartMsg = z.object({
+  ...envelope('snapshot.part'), transferId: z.string().min(1).max(64),
+  index: z.number().int().min(0).max(511), total: z.number().int().min(1).max(512),
+  body: z.string().max(128 * 1024),
+});
 export const AgentUpsertMsg = z.object({ ...envelope('agent.upsert'), agent: Agent });
 export const AgentLogMsg = z.object({ ...envelope('agent.log'), agentId: Id, entries: z.array(LogEntry) });
 export const AgentSayMsg = z.object({
@@ -328,6 +333,7 @@ export const ErrorMsg = z.object({
 
 export const ServerMessage = z.discriminatedUnion('type', [
   SnapshotMsg,
+  SnapshotPartMsg,
   AgentUpsertMsg,
   AgentLogMsg,
   AgentSayMsg,
@@ -350,6 +356,7 @@ export type ServerMessage = z.infer<typeof ServerMessage>;
 export const HelloMsg = z.object({
   ...envelope('hello'),
   modVersion: z.string(),
+  snapshotParts: z.boolean().optional().describe('Accept ordered snapshot.part messages and apply the reconstructed snapshot atomically.'),
   protocol: z.literal(PROTOCOL_VERSION),
   client: z.string().optional().describe('"mod" | "cli" | ... (informational)'),
 });
@@ -388,6 +395,26 @@ export const AgentActionMsg = z.object({
     ),
   arg: z.string().optional().describe('spawn: optional task id to assign to the agent'),
 });
+export const HarnessProvider = z.enum(['codex', 'claude']);
+export const RoleSelection = z.object({
+  provider: HarnessProvider,
+  model: z.string().min(1).max(200).optional(),
+  effort: z.string().min(1).max(40).optional(),
+});
+export type RoleSelection = z.infer<typeof RoleSelection>;
+export const TeamRoles = z.object({lead: RoleSelection, worker: RoleSelection, reviewer: RoleSelection});
+export type TeamRoles = z.infer<typeof TeamRoles>;
+export const HarnessDetectMsg = z.object({...envelope('harness.detect'), refresh: z.boolean().optional()});
+export const TeamConfigureMsg = z.object({
+  ...envelope('team.configure'), roles: TeamRoles, resetAgentOverrides: z.boolean().optional(),
+});
+export const AgentModelsMsg = z.object({ ...envelope('agent.models'), agentId: Id, provider: HarnessProvider.optional() });
+export const AgentConfigureMsg = z.object({
+  ...envelope('agent.configure'), agentId: Id, provider: HarnessProvider.optional(),
+  model: z.string().min(1).max(200).optional(),
+  effort: z.string().min(1).max(40).optional(),
+});
+
 export const DiffRequestMsg = z.object({
   ...envelope('diff.request'),
   requestId: z.string().min(1),
@@ -403,6 +430,10 @@ export const ClientMessage = z.discriminatedUnion('type', [
   DecisionAnswerMsg,
   TaskActionMsg,
   AgentActionMsg,
+  HarnessDetectMsg,
+  TeamConfigureMsg,
+  AgentModelsMsg,
+  AgentConfigureMsg,
   DiffRequestMsg,
   RepoAddMsg,
 ]);
@@ -452,6 +483,7 @@ export function formatZodError(err: z.ZodError): string {
 
 /** Registry used by the doc generator and tests. Order = documentation order. */
 export const SERVER_MESSAGES = {
+  'snapshot.part': { schema: SnapshotPartMsg, doc: 'Negotiated bounded snapshot transport. Concatenate bodies in index order; apply only the complete JSON snapshot. Limit 64 MiB, 512 parts; reset on a new transfer.' },
   snapshot: { schema: SnapshotMsg, doc: 'Full state. Sent in reply to every `hello`; the mod rebuilds its view from it.' },
   'agent.upsert': { schema: AgentUpsertMsg, doc: 'An agent was created or changed (state, station, activity, task...). Replace by `agent.id`.' },
   'agent.log': { schema: AgentLogMsg, doc: 'New log lines for an agent monitor (append; keep a bounded tail).' },
@@ -471,11 +503,15 @@ export const SERVER_MESSAGES = {
 
 export const CLIENT_MESSAGES = {
   hello: { schema: HelloMsg, doc: 'First message after connecting. The Foreman replies with `snapshot`, then streams upserts.' },
-  'goal.submit': { schema: GoalSubmitMsg, doc: 'New goal for the lead (console: plain text).' },
-  'user.message': { schema: UserMessageMsg, doc: 'Message an agent (console: `@name text`) or everyone.' },
+  'goal.submit': { schema: GoalSubmitMsg, doc: 'New goal for the lead (Minecraft console: `/goal <text>`).' },
+  'user.message': { schema: UserMessageMsg, doc: 'Message an agent (Minecraft console: plain text to Marlow, `@name text` to an agent) or everyone (`@all text`).' },
   'decision.answer': { schema: DecisionAnswerMsg, doc: 'Answer an open decision. Merge decisions: option "Merge" merges, "Request changes" sends `text` back to the worker, "Reject" abandons the branch.' },
   'task.action': { schema: TaskActionMsg, doc: 'Steer a task from the Task Wall.' },
   'agent.action': { schema: AgentActionMsg, doc: 'Pause/resume/stop an agent, or spawn (activate) an off-shift worker.' },
+  'harness.detect': { schema: HarnessDetectMsg, doc: 'Detect installed standalone harnesses, login availability and model catalogs; return current team selections.' },
+  'team.configure': { schema: TeamConfigureMsg, doc: 'Atomically configure lead, worker and reviewer harness/model/reasoning choices for future turns. Preserve per-agent overrides unless resetAgentOverrides is true.' },
+  'agent.models': { schema: AgentModelsMsg, doc: 'Read available models, supported reasoning levels and current settings for an agent.' },
+  'agent.configure': { schema: AgentConfigureMsg, doc: 'Set an agent model and reasoning level for its next turn; omit both to restore role defaults.' },
   'diff.request': { schema: DiffRequestMsg, doc: 'Ask for the structured diff of a worktree. Answered with `diff` (same requestId).' },
   'repo.add': { schema: RepoAddMsg, doc: 'Register a local git repo (console: `/repo add <path>`).' },
 } as const;

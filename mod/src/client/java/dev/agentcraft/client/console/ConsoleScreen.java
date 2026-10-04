@@ -88,6 +88,8 @@ public class ConsoleScreen extends Screen {
 	private int popupW;
 	private int popupRowH;
 	private int popupCount;
+	private int popupStart;
+	private int popupRowsY;
 
 	// wrapped rows cache
 	private long rowsRev = -1;
@@ -489,10 +491,10 @@ public class ConsoleScreen extends Screen {
 		double mx = e.x();
 		double my = e.y();
 		// completion rows
-		if (popupVisible() && mx >= popupX && mx < popupX + popupW && my >= popupY) {
-			int i = (int) ((my - popupY - 5) / popupRowH);
+		if (popupVisible() && mx >= popupX && mx < popupX + popupW && my >= popupRowsY && my < popupRowsY + popupCount * popupRowH) {
+			int i = (int) ((my - popupRowsY) / popupRowH);
 			if (i >= 0 && i < popupCount) {
-				compSel = i;
+				compSel = popupStart + i;
 				applyCompletion();
 				return true;
 			}
@@ -531,6 +533,12 @@ public class ConsoleScreen extends Screen {
 
 	@Override
 	public boolean mouseScrolled(double x, double y, double scrollX, double scrollY) {
+		if (scrollY == 0) return true;
+		if (popupVisible() && x >= popupX && x < popupX + popupW
+				&& y >= popupY && y < popupRowsY + popupCount * popupRowH + 14) {
+			compSel = Math.clamp(compSel + (scrollY > 0 ? -1 : 1), 0, completions.size() - 1);
+			return true;
+		}
 		scroll.scrollBy(scrollY > 0 ? -3 : 3);
 		return true;
 	}
@@ -571,7 +579,7 @@ public class ConsoleScreen extends Screen {
 				hint = ConsoleCommands.describe(intent, s);
 			}
 		}
-		String placeholder = "Type a goal, @agent to message, or /help";
+		String placeholder = "Talk to Marlow, /goal to start work, or @agent to message";
 		return new TextFieldView.Style(">", UiStyle.BRASS, placeholder, ghostText(), hint, hintColor, 6);
 	}
 
@@ -651,7 +659,7 @@ public class ConsoleScreen extends Screen {
 		int ly = listY + 4;
 		g.enableScissor(listX + 2, listY + 2, listX + listW - 2, listY + listH - 2);
 		if (rs.isEmpty()) {
-			String msg = s == null || !s.hasData() ? "Waiting for the Foreman…" : "Nothing yet. Type a goal below and press Enter.";
+			String msg = s == null || !s.hasData() ? "Waiting for the Foreman…" : "Talk to Marlow below, or use /goal to start work.";
 			g.text(font, msg, listX + 8, ly + 2, UiBits.muted(), false);
 		}
 		int textX0 = listX + 6;
@@ -830,12 +838,13 @@ public class ConsoleScreen extends Screen {
 	private void drawPopup(GuiGraphicsExtractor g, int bottom, int mouseX, int mouseY) {
 		int n = Math.min(MAX_POPUP, completions.size());
 		popupCount = n;
+		popupStart = CompletionViewport.start(popupStart, compSel, completions.size(), n);
 		popupRowH = 11;
 		Kit.Padding p = Kit.padding("tooltip");
 		int maxLabel = 0;
 		int maxDetail = 0;
 		for (int i = 0; i < n; i++) {
-			Completion c = completions.get(i);
+			Completion c = completions.get(popupStart + i);
 			maxLabel = Math.max(maxLabel, font.width(c.label()));
 			if (c.detail() != null) {
 				maxDetail = Math.max(maxDetail, Math.min(170, font.width(c.detail())));
@@ -858,9 +867,10 @@ public class ConsoleScreen extends Screen {
 		g.fill(x - 1, y - 1, x + w + 1, y + h + 1, UiStyle.BRASS);
 		Panels.sprite(g, Kit.PANEL_PAPER, x, y, w, h);
 		int ry = y + p.top();
+		popupRowsY = ry;
 		for (int i = 0; i < n; i++) {
-			Completion c = completions.get(i);
-			boolean sel = i == compSel;
+			Completion c = completions.get(popupStart + i);
+			boolean sel = popupStart + i == compSel;
 			if (sel) {
 				g.fill(x + 3, ry - 1, x + w - 3, ry + popupRowH - 1, UiStyle.withAlpha(UiStyle.CLAY, 46));
 				g.fill(x + 3, ry - 1, x + 5, ry + popupRowH - 1, UiStyle.CLAY);

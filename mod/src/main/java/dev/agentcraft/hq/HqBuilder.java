@@ -25,8 +25,12 @@ public interface HqBuilder {
 	 * How a build was asked for: {@code force} = reset every cell of the site to the plan, even the
 	 * ones the player changed since the last build (builders that keep such cells honour it).
 	 */
-	record Options(boolean force) {
-		public static final Options DEFAULT = new Options(false);
+	record Options(boolean force, int originX, int originY, int originZ, boolean explicitOrigin) {
+		public static final Options DEFAULT = new Options(false, 0, 64, 0, false);
+
+		public Options(boolean force) {
+			this(force, 0, 64, 0, false);
+		}
 	}
 
 	/**

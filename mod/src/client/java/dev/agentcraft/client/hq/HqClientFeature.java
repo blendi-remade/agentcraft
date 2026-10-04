@@ -49,7 +49,6 @@ public final class HqClientFeature {
 	public static void init() {
 		BlockEntityRenderers.register(ModBlockEntities.STATUS_LAMP, ctx -> new StatusLampRenderer());
 		ClientTickEvents.END_CLIENT_TICK.register(mc -> {
-			HqWorldDriver.tick(mc);
 			ambience(mc);
 		});
 		DevBridge.addStateContributor((mc, state) -> state.add("hq", stateJson()));

@@ -16,8 +16,9 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * Change callbacks of {@link ForemanState}. Every method has a no-op default; implement what you
- * need. All callbacks run on the <b>client (render) thread</b>, after the state model was updated,
- * so reading {@link Foreman#state()} inside them sees the new state.
+ * need. Callbacks run on the thread applying the state update: the render thread for client
+ * links, or the server thread for the dedicated relay. The state is already updated. Listeners
+ * must use the supplied model and must not assume a client runtime exists.
  *
  * <p>A {@code snapshot} (on every (re)connect) replaces the whole model and fires only
  * {@link #onSnapshot}: rebuild anything you derived from the state there. Upserts fire the

@@ -206,8 +206,9 @@ describe('claude backend restart recovery (fake SDK)', () => {
     await h.fm.close();
     // simulate a crash after the turn record was cleared but before its follow-up work ran
     const stateFile = path.join(home, 'claude', 'state.json');
-    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as { backend: { claude: { inflight: Record<string, unknown> } }; tasks: Array<{ id: string; status: string }> };
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8')) as { backend: { claude: { inflight: Record<string, unknown> }; execution: {inflight: Record<string, unknown>} }; tasks: Array<{ id: string; status: string }> };
     delete state.backend.claude.inflight.kit;
+    delete state.backend.execution.inflight.kit;
     fs.writeFileSync(stateFile, JSON.stringify(state));
     expect(state.tasks.find((t) => t.id === 't1')!.status).toBe('doing');
 

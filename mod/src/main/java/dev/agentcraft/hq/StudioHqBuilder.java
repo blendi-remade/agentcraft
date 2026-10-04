@@ -16,6 +16,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
 import net.minecraft.core.Direction;
+import net.minecraft.core.BlockPos;
 import net.minecraft.server.level.ServerLevel;
 import net.minecraft.world.item.DyeColor;
 import net.minecraft.world.level.block.Block;
@@ -23,6 +24,9 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.CopperBulbBlock;
 import net.minecraft.world.level.block.HorizontalDirectionalBlock;
 import net.minecraft.world.level.block.state.BlockState;
+import net.minecraft.world.entity.ExperienceOrb;
+import net.minecraft.world.entity.item.ItemEntity;
+import net.minecraft.world.phys.AABB;
 import net.minecraft.world.level.block.state.properties.BellAttachType;
 import org.jspecify.annotations.Nullable;
 
@@ -159,8 +163,13 @@ public final class StudioHqBuilder implements HqBuilder {
 	@Override
 	public @Nullable String build(ServerLevel level, Anchors.Builder a, Options options) {
 		long t0 = System.nanoTime();
+		int originX = options.explicitOrigin() ? options.originX() : 0;
+		int originY = options.explicitOrigin() ? options.originY() : GROUND;
+		int originZ = options.explicitOrigin() ? options.originZ() : 0;
+		int offsetY = originY - GROUND;
 		Plan p = new Plan(SITE[0], SITE[1], SITE[2], SITE[3], SITE[4], SITE[5], GROUND, y -> y > GROUND ? AIR
-			: y == GROUND ? Blocks.GRASS_BLOCK.defaultBlockState() : y >= GROUND - 3 ? Blocks.DIRT.defaultBlockState() : Blocks.STONE.defaultBlockState());
+			: y == GROUND ? Blocks.GRASS_BLOCK.defaultBlockState() : y >= GROUND - 3 ? Blocks.DIRT.defaultBlockState() : Blocks.STONE.defaultBlockState(),
+			originX, offsetY, originZ);
 		long tPlan0 = System.nanoTime();
 		HqLandscape.ground(p);
 		hallShell(p);
@@ -179,9 +188,13 @@ public final class StudioHqBuilder implements HqBuilder {
 		cameras(a);
 		p.settleGrass();
 		long tPlan = System.nanoTime() - tPlan0;
-		BlockState[] previous = PlanStore.load(level.getServer(), ID, SITE, p.size());
+		int[] site = {p.minX, p.minY, p.minZ, p.maxX, p.maxY, p.maxZ};
+		BlockState[] previous = PlanStore.load(level.getServer(), ID, site, p.size());
+		if (!dev.agentcraft.world.HqWorld.isHq(level.getServer()) && !options.force() && previous == null && occupiedByPlayerBuild(level, p)) {
+			throw new IllegalStateException("the first-build site contains non-natural blocks or dropped items; choose a clear origin, or use force to replace that exact region");
+		}
 		Plan.Stats st = p.apply(level, previous, options.force());
-		PlanStore.save(level.getServer(), ID, SITE, p.cells());
+		PlanStore.save(level.getServer(), ID, site, p.cells());
 		a.bounds(-HX + 1, FLOOR, HZN + 1, HX - 1, FLOOR + 16, AZ + 8);
 		a.spot(AnchorNames.ENTRANCE, AX, FEET, AZ + 7, 180);
 		a.put(AnchorNames.SPAWN, AX + 0.5, FEET, AZ + 7.5, 180, 0);
@@ -208,6 +221,32 @@ public final class StudioHqBuilder implements HqBuilder {
 			r.append(String.format(Locale.ROOT, "; removed %d dropped item%s", st.items(), st.items() == 1 ? "" : "s"));
 		}
 		return r.toString();
+	}
+
+	/** A first build in a regular world must not wipe an existing construction or dropped items. */
+	private static boolean occupiedByPlayerBuild(ServerLevel level, Plan plan) {
+		BlockPos.MutableBlockPos pos = new BlockPos.MutableBlockPos();
+		for (int cx = plan.minX >> 4; cx <= plan.maxX >> 4; cx++) {
+			for (int cz = plan.minZ >> 4; cz <= plan.maxZ >> 4; cz++) {
+				var chunk = level.getChunk(cx, cz);
+				int x0 = Math.max(plan.minX, cx << 4);
+				int x1 = Math.min(plan.maxX, (cx << 4) + 15);
+				int z0 = Math.max(plan.minZ, cz << 4);
+				int z1 = Math.min(plan.maxZ, (cz << 4) + 15);
+				for (int y = plan.minY; y <= plan.maxY; y++) {
+					for (int z = z0; z <= z1; z++) {
+						for (int x = x0; x <= x1; x++) {
+							BlockState state = chunk.getBlockState(pos.set(x, y, z));
+							if (Plan.protectedOnFirstBuild(state)) {
+								return true;
+							}
+						}
+					}
+				}
+			}
+		}
+		AABB site = new AABB(plan.minX, plan.minY, plan.minZ, plan.maxX + 1, plan.maxY + 1, plan.maxZ + 1);
+		return !level.getEntitiesOfClass(ItemEntity.class, site).isEmpty() || !level.getEntitiesOfClass(ExperienceOrb.class, site).isEmpty();
 	}
 
 	/** Desk bay owners, west to east (see {@link #DESK_ORDER}). */

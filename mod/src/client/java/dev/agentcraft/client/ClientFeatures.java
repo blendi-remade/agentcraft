@@ -1,6 +1,7 @@
 package dev.agentcraft.client;
 
 import dev.agentcraft.AgentCraft;
+import dev.agentcraft.client.setup.SetupFeature;
 import dev.agentcraft.client.agents.AgentsFeature;
 import dev.agentcraft.client.console.ConsoleFeature;
 import dev.agentcraft.client.decisions.DecisionsFeature;
@@ -28,6 +29,7 @@ public final class ClientFeatures {
 
 	public static void init() {
 		ForemanFeature.init();   // link + state model (dev.foreman, dev.state.foreman)
+		SetupFeature.init();     // detected harnesses and owner team setup
 		AnchorsDev.init();       // dev.anchors, dev.camera {anchor}
 		ItemsDev.init();         // dev.screen creative_agentcraft
 		AgentsFeature.init();    // agent NPCs, nameplates, dev.agents

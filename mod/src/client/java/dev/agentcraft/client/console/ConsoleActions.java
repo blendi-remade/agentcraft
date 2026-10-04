@@ -280,7 +280,7 @@ public final class ConsoleActions {
 
 	private static void help(@Nullable String topic) {
 		ConsoleLog.add(Tone.HEADER, "Console");
-		ConsoleLog.add(Tone.HELP, "plain text\ta new goal for Marlow (several repos: you pick one)");
+		ConsoleLog.add(Tone.HELP, "plain text\tmessage Marlow (also steers work on an active goal)");
 		ConsoleLog.add(Tone.HELP, "@juniper text\tmessage an agent (Tab completes, @all = everyone)");
 		for (Command c : ConsoleCommands.COMMANDS) {
 			if (topic == null || c.name().startsWith(topic)) {
@@ -305,7 +305,7 @@ public final class ConsoleActions {
 			ConsoleLog.add(Tone.INFO, "goal " + g.id() + " (" + g.status().wire() + ", " + Math.round(g.progress() * 100) + "%): "
 				+ ConsoleCommands.oneLine(g.text(), 90));
 		} else {
-			ConsoleLog.add(Tone.INFO, "no goal yet: type one and press Enter");
+			ConsoleLog.add(Tone.INFO, "no goal yet: /goal <text> starts work; plain text talks to Marlow");
 		}
 		Map<TaskStatus, Integer> counts = new LinkedHashMap<>();
 		for (TaskStatus ts : List.of(TaskStatus.DOING, TaskStatus.REVIEW, TaskStatus.TODO, TaskStatus.BLOCKED, TaskStatus.DONE)) {

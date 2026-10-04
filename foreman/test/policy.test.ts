@@ -58,7 +58,7 @@ const rows: Row[] = [
   bash('cd worktree && test 2>&1 | tail', `cd "${wt}" && node --test 2>&1 | tail -50`, 'allow'),
   bash('npm test 2>&1', 'npm test 2>&1', 'allow'),
   // seen in the real smoke run (haiku): cmd.exe style cd /d into the worktree
-  bash('cd /d worktree && npm test', `cd /d ${wt} && npm test`, 'allow'),
+  bash('cd /d worktree && npm test', `cd /d "${wt}" && npm test`, 'allow'),
   bash('cd /d outside', 'cd /d C:\\Windows && dir', process.platform === 'win32' ? 'ask' : 'allow'),
   bash('redirect inside', 'npm test > test.log 2>&1', 'allow'),
   bash('echo > file inside', 'echo hi > notes/out.txt', 'allow'),
@@ -69,7 +69,7 @@ const rows: Row[] = [
   bash('heredoc script fed to bash: safe', "bash <<'EOF'\nnpm test\nls src\nEOF", 'allow'),
   bash('heredoc code fed to python', "python - <<'EOF'\nimport os\nos.system('curl x')\nEOF", 'ask'),
   bash('unquoted heredoc with substitution', 'cat > a.txt <<EOF\n$(cat ~/.ssh/id_rsa)\nEOF', 'ask'),
-  bash('temp scratch redirect', `echo x > ${path.join(os.tmpdir(), 'scratch.txt').replace(/\\/g, '/')}`, 'allow', withTemp),
+  bash('temp scratch redirect', `echo x > "${path.join(os.tmpdir(), 'scratch.txt').replace(/\\/g, '/')}"`, 'allow', withTemp),
   bash('timeout npm test', 'timeout 60 npm test', 'allow'),
   bash('python -m pytest', 'python -m pytest -q', 'allow'),
   bash('git config read', 'git config user.name', 'allow'),

@@ -50,7 +50,7 @@ function fakeQuery(h: Harness) {
         return;
       }
       const task = /Your task: (t\d+)/.exec(p)?.[1];
-      if (task && opts.cwd!.includes('kit-')) {
+      if (task && path.basename(opts.cwd!).startsWith('kit-')) {
         const s = sid('2001');
         yield init(s);
         yield toolUse(s, 'Edit', { file_path: path.join(opts.cwd!, 'src', 'cli.ts'), old_string: "case 'help':", new_string: "case '--version':" });
@@ -68,7 +68,7 @@ function fakeQuery(h: Harness) {
         yield result(s, 'implemented');
         return;
       }
-      if (task && opts.cwd!.includes('juniper-')) {
+      if (task && path.basename(opts.cwd!).startsWith('juniper-')) {
         const s = sid('3001');
         yield init(s);
         fs.appendFileSync(path.join(opts.cwd!, 'README.md'), '\n`notes --version` prints the version.\n');

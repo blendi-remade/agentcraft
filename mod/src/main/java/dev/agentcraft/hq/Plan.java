@@ -59,6 +59,7 @@ final class Plan {
 	private static final Set<String> CONNECTION_PROPS = Set.of("shape", "north", "east", "south", "west", "up", "down", "left", "right",
 		"in_wall");
 
+	final int localMinX, localMaxX, localMinZ, localMaxZ;
 	final int minX;
 	final int minY;
 	final int minZ;
@@ -68,6 +69,9 @@ final class Plan {
 	private final int sx;
 	private final int sy;
 	private final int sz;
+	private final int offsetX;
+	private final int offsetY;
+	private final int offsetZ;
 	private final BlockState[] cells;
 	private final int[] top;
 	private final Map<BlockPos, String> bindings = new LinkedHashMap<>();
@@ -85,22 +89,35 @@ final class Plan {
 
 	/** @param ground desired state of an unset cell by y (the meadow profile); the ground top is {@code groundTop}. */
 	Plan(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int groundTop, IntFunction<BlockState> ground) {
-		this.minX = minX;
-		this.minY = minY;
-		this.minZ = minZ;
-		this.maxX = maxX;
-		this.maxY = maxY;
-		this.maxZ = maxZ;
-		this.sx = maxX - minX + 1;
-		this.sy = maxY - minY + 1;
-		this.sz = maxZ - minZ + 1;
+		this(minX, minY, minZ, maxX, maxY, maxZ, groundTop, ground, 0, 0, 0);
+	}
+
+	/** Local builder coordinates are translated into a protected world-space site box. */
+	Plan(int minX, int minY, int minZ, int maxX, int maxY, int maxZ, int groundTop, IntFunction<BlockState> ground,
+		int offsetX, int offsetY, int offsetZ) {
+		this.localMinX = minX;
+		this.localMaxX = maxX;
+		this.localMinZ = minZ;
+		this.localMaxZ = maxZ;
+		this.offsetX = offsetX;
+		this.offsetY = offsetY;
+		this.offsetZ = offsetZ;
+		this.minX = minX + offsetX;
+		this.minY = minY + offsetY;
+		this.minZ = minZ + offsetZ;
+		this.maxX = maxX + offsetX;
+		this.maxY = maxY + offsetY;
+		this.maxZ = maxZ + offsetZ;
+		this.sx = this.maxX - this.minX + 1;
+		this.sy = this.maxY - this.minY + 1;
+		this.sz = this.maxZ - this.minZ + 1;
 		this.cells = new BlockState[sx * sy * sz];
 		this.top = new int[sx * sz];
 		java.util.Arrays.fill(top, groundTop);
-		for (int y = minY; y <= maxY; y++) {
-			BlockState g = ground.apply(y);
-			for (int x = minX; x <= maxX; x++) {
-				for (int z = minZ; z <= maxZ; z++) {
+		for (int y = this.minY; y <= this.maxY; y++) {
+			BlockState g = ground.apply(y - offsetY);
+			for (int x = this.minX; x <= this.maxX; x++) {
+				for (int z = this.minZ; z <= this.maxZ; z++) {
 					cells[index(x, y, z)] = g;
 				}
 			}
@@ -128,7 +145,11 @@ final class Plan {
 	}
 
 	BlockState get(int x, int y, int z) {
-		return in(x, y, z) ? cells[index(x, y, z)] : Blocks.AIR.defaultBlockState();
+		int wx = x + offsetX;
+		int wy = y + offsetY;
+		int wz = z + offsetZ;
+		return wx >= minX && wx <= maxX && wy >= minY && wy <= maxY && wz >= minZ && wz <= maxZ
+			? cells[index(wx, wy, wz)] : Blocks.AIR.defaultBlockState();
 	}
 
 	boolean isAir(int x, int y, int z) {
@@ -136,8 +157,11 @@ final class Plan {
 	}
 
 	void set(int x, int y, int z, BlockState state) {
-		if (in(x, y, z)) {
-			cells[index(x, y, z)] = state;
+		int wx = x + offsetX;
+		int wy = y + offsetY;
+		int wz = z + offsetZ;
+		if (wx >= minX && wx <= maxX && wy >= minY && wy <= maxY && wz >= minZ && wz <= maxZ) {
+			cells[index(wx, wy, wz)] = state;
 		}
 	}
 
@@ -168,18 +192,22 @@ final class Plan {
 
 	/** Ground top (the grass block's y) of column (x, z); outside the box: the meadow default. */
 	int top(int x, int z) {
-		return inXZ(x, z) ? top[(z - minZ) * sx + (x - minX)] : StudioHqBuilder.GROUND;
+		int wx = x + offsetX;
+		int wz = z + offsetZ;
+		return wx >= minX && wx <= maxX && wz >= minZ && wz <= maxZ ? top[(wz - minZ) * sx + (wx - minX)] : StudioHqBuilder.GROUND;
 	}
 
 	void setTop(int x, int z, int y) {
-		if (inXZ(x, z)) {
-			top[(z - minZ) * sx + (x - minX)] = y;
+		int wx = x + offsetX;
+		int wz = z + offsetZ;
+		if (wx >= minX && wx <= maxX && wz >= minZ && wz <= maxZ) {
+			top[(wz - minZ) * sx + (wx - minX)] = y;
 		}
 	}
 
 	/** Binding for the station block entity at (x, y, z), applied after the blocks. */
 	void bind(int x, int y, int z, String binding) {
-		bindings.put(new BlockPos(x, y, z), binding);
+		bindings.put(new BlockPos(x + offsetX, y + offsetY, z + offsetZ), binding);
 	}
 
 	/**
@@ -383,10 +411,17 @@ final class Plan {
 	}
 
 	/** Terrain, plants and fluids: replacing them is not "replacing something the player built". */
-	private static boolean natural(BlockState s) {
+	/** Leaves may belong to a planted tree or extend into the site from outside it. */
+	static boolean protectedOnFirstBuild(BlockState state) {
+		return !state.isAir() && (!Plan.natural(state)
+			|| state.getBlock() instanceof net.minecraft.world.level.block.LeavesBlock);
+	}
+
+	static boolean natural(BlockState s) {
 		return s.is(Blocks.GRASS_BLOCK) || s.is(Blocks.DIRT) || s.is(Blocks.STONE) || s.is(Blocks.SHORT_GRASS) || s.is(Blocks.TALL_GRASS)
 			|| s.is(Blocks.WATER) || s.is(Blocks.DIRT_PATH) || s.getBlock() instanceof net.minecraft.world.level.block.VegetationBlock
-			|| s.getBlock() instanceof net.minecraft.world.level.block.LeavesBlock;
+			|| (s.getBlock() instanceof net.minecraft.world.level.block.LeavesBlock
+				&& !s.getValue(net.minecraft.world.level.block.LeavesBlock.PERSISTENT));
 	}
 
 	/**

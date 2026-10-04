@@ -256,6 +256,13 @@ final class DevCommands {
 		win.addProperty("osForeground", WinFocus.isForeground(w));
 		win.addProperty("iconified", w.isIconified());
 		o.add("window", win);
+		JsonObject mouse = new JsonObject();
+		mouse.addProperty("x", mc.mouseHandler.xpos());
+		mouse.addProperty("y", mc.mouseHandler.ypos());
+		mouse.addProperty("guiX", mc.mouseHandler.getScaledXPos(w));
+		mouse.addProperty("guiY", mc.mouseHandler.getScaledYPos(w));
+		mouse.addProperty("grabbed", mc.mouseHandler.isMouseGrabbed());
+		o.add("mouse", mouse);
 		o.addProperty("hudHidden", mc.gui.hud.isHidden());
 		// fov = what the last frame was rendered with; fovOption = the player's setting; fovPin = dev.camera's pin (null = none).
 		o.addProperty("fov", mc.gameRenderer.mainCamera().getFov());

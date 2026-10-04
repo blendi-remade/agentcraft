@@ -52,7 +52,7 @@ describe('ClaudeBackend.checkAuth', () => {
     expect(await b.checkAuth()).toBe(false);
     expect(queried).toBe(0);
     expect(h.fm.status.auth).toBe('failed');
-    expect(h.fm.status.message).toBe(NO_API_AUTH_MESSAGE);
+    expect(h.fm.status.message).toContain(NO_API_AUTH_MESSAGE);
   });
 
   it('with ANTHROPIC_API_KEY it checks access and reports the API key as the source', async () => {

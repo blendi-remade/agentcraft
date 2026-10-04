@@ -30,6 +30,14 @@ describe('loadConfig argument checking', () => {
     expect(cfg.sim.speed).toBe(2);
   });
 
+  it('selects Codex without inheriting the Claude model defaults', () => {
+    const cfg = load(['--backend', 'codex']);
+    expect(cfg.backend).toBe('codex');
+    expect(cfg.codex.model).toBeUndefined();
+    expect(cfg.codex.leadModel).toBeUndefined();
+    expect(cfg.codex.workerModel).toBeUndefined();
+  });
+
   // regression: PowerShell `-File launch.ps1 -ForemanArgs '--workers,juniper,kit,--model,sonnet'` hands
   // the Foreman ONE argument; it used to be ignored silently and the team started on opus/medium/3 workers
   it('refuses an argument that PowerShell joined with commas', () => {

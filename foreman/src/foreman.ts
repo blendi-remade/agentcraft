@@ -1,6 +1,8 @@
+import { snapshotFrames } from './snapshot-transfer.js';
 // Foreman core: owns all state, composes the subsystems, applies user intents and exposes the
 // primitives backends (sim / claude) use to drive agents. Transport-agnostic: the WS server feeds
 // it ClientMessages and subscribes to outbound protocol messages.
+import type { HarnessCapability, HarnessName } from './agents/harness-catalog.js';
 import fs from 'node:fs';
 import path from 'node:path';
 import { MessageBus } from './bus.js';
@@ -14,6 +16,8 @@ import { Notifier } from './notifier.js';
 import type {
   Agent,
   AgentState,
+  TeamRoles,
+  RoleSelection,
   ClientMessage,
   Decision,
   ForemanStatus,
@@ -32,7 +36,12 @@ import { setUserName, userName } from './user.js';
 import { truncate } from './util/text.js';
 
 export interface Backend {
-  readonly name: 'sim' | 'claude';
+  agentModels?(agentId: string, provider?: HarnessName): Promise<Record<string, unknown>>;
+  configureAgent?(agentId: string, model?: string, effort?: string, provider?: HarnessName): Promise<Record<string, unknown>>;
+  configureTeam?(roles: TeamRoles, resetAgentOverrides?: boolean): Promise<{roles: Partial<Record<keyof TeamRoles, RoleSelection>>; setupComplete: boolean}>;
+  roleSelections?(): Partial<Record<keyof TeamRoles, RoleSelection>>;
+  setupState?(): {roles: Partial<Record<keyof TeamRoles, RoleSelection>>; setupComplete: boolean; hasAgentOverrides: boolean; agentOverrides: Record<string, unknown>};
+  readonly name: 'sim' | 'claude' | 'codex';
   /** Called once after the core is ready (and after restart: resume work). */
   start(): Promise<void>;
   stop(): Promise<void>;
@@ -59,6 +68,7 @@ export interface ForemanOptions {
   logger?: Logger;
   notifier?: Notifier;
   now?: () => number;
+  harnessCatalog?: (provider: HarnessName, refresh?: boolean) => Promise<HarnessCapability>;
 }
 
 const LOG_TEXT_MAX = 2000;
@@ -78,6 +88,7 @@ export class Foreman {
   backend: Backend | undefined;
   status: ForemanStatus;
 
+  private readonly harnessCatalog: ForemanOptions['harnessCatalog'];
   private listeners = new Set<(m: Outbound) => void>();
   private logBuffers = new Map<string, LogEntry[]>();
   private logTimer: NodeJS.Timeout | undefined;
@@ -86,6 +97,7 @@ export class Foreman {
 
   constructor(opts: ForemanOptions) {
     this.config = opts.config;
+    this.harnessCatalog = opts.harnessCatalog;
     this.log = opts.logger ?? consoleLogger('foreman', { debug: opts.config.debug, quiet: opts.config.quiet });
     this.store = new Store(opts.config.dataDir);
     const now = opts.now ?? Date.now;
@@ -501,7 +513,7 @@ export class Foreman {
   private async dispatch(msg: ClientMessage, reply: Reply): Promise<Record<string, unknown> | undefined> {
     switch (msg.type) {
       case 'hello':
-        reply(this.snapshot());
+        for (const frame of msg.snapshotParts ? snapshotFrames(this.snapshot()) : [this.snapshot()]) reply(frame);
         return undefined;
       case 'goal.submit':
         return { goalId: (await this.submitGoal(msg.text, msg.repoId)).id };
@@ -521,6 +533,26 @@ export class Foreman {
       case 'agent.action':
         await this.agentAction(msg.agentId, msg.action, msg.arg);
         return { agentId: msg.agentId };
+      case 'harness.detect': {
+        if (!this.harnessCatalog) throw new ClientError('Harness discovery is not available in this runtime.');
+        const harnesses = await Promise.all((['codex', 'claude'] as const).map(provider => this.harnessCatalog!(provider, msg.refresh)));
+        const setup = this.backend?.setupState?.() ?? {
+          roles: this.backend?.roleSelections?.() ?? {}, setupComplete: false,
+          hasAgentOverrides: false, agentOverrides: {},
+        };
+        return {harnesses, ...setup, canConfigure: !!this.backend?.configureTeam};
+      }
+      case 'team.configure':
+        if (!this.backend?.configureTeam) throw new ClientError('Team setup is not available in this runtime.');
+        return {...await this.backend.configureTeam(msg.roles, msg.resetAgentOverrides)};
+      case 'agent.models':
+        if (!this.agent(msg.agentId)) throw new ClientError('Unknown agent.');
+        if (!this.backend?.agentModels) throw new ClientError('Model settings are not supported by this backend.');
+        return this.backend.agentModels(msg.agentId, msg.provider);
+      case 'agent.configure':
+        if (!this.agent(msg.agentId)) throw new ClientError('Unknown agent.');
+        if (!this.backend?.configureAgent) throw new ClientError('Model settings are not supported by this backend.');
+        return this.backend.configureAgent(msg.agentId, msg.model, msg.effort, msg.provider);
       case 'diff.request': {
         try {
           const d = await this.repos.diff(msg.repoId, msg.worktree);

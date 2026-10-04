@@ -1,7 +1,65 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
+import { EventEmitter } from 'node:events';
 import { WebSocketServer } from 'ws';
 import { ForemanClient } from '../lib/foremanclient.mjs';
+
+function memoryForeman(handle) {
+  const ws = new EventEmitter();
+  ws.send = (raw) => handle(JSON.parse(raw), (m) => ws.emit('message', JSON.stringify(m)), ws);
+  return new ForemanClient(ws);
+}
+
+for (const failure of ['negative ack', 'send throw', 'close', 'timeout', 'closed before request']) {
+  test(`diff releases resources on ${failure}`, async (t) => {
+    t.mock.timers.enable({ apis: ['setTimeout'] });
+    const clear = t.mock.method(globalThis, 'clearTimeout');
+    const fm = memoryForeman((m, reply, ws) => {
+      if (failure === 'negative ack') reply({ type: 'ack', re: m.id, ok: false, error: 'fixture refusal' });
+      if (failure === 'send throw') throw new Error('fixture send failure');
+      if (failure === 'close') ws.emit('close');
+    });
+    if (failure === 'closed before request') fm.ws.emit('close');
+    const error = { 'negative ack': /fixture refusal/, 'send throw': /fixture send failure/, close: /connection closed/, timeout: /timed out|no ack/, 'closed before request': /connection closed/ }[failure];
+    const pending = fm.diff('r', 'worker', { timeoutMs: 30 });
+    const timers = [...fm.waiters, ...fm.pendingAcks.values()].map((entry) => entry.timer);
+    const rejected = assert.rejects(pending, error);
+    if (failure === 'timeout') t.mock.timers.tick(30);
+    await rejected;
+    assert.equal(fm.waiters.size, 0, 'no orphaned reply waiter');
+    assert.equal(fm.pendingAcks.size, 0, 'no orphaned acknowledgement');
+    if (failure !== 'timeout') {
+      for (const timer of timers) assert.ok(clear.mock.calls.some((call) => call.arguments[0] === timer), 'reply timer cancelled');
+    }
+    t.mock.timers.tick(60);
+    // Let Node observe any detached promise rejection after timeout/close.
+    await new Promise(setImmediate);
+  });
+}
+
+for (const replyFirst of [false, true]) {
+  test(`diff preserves matching replies with replyFirst=${replyFirst}`, async () => {
+    const fm = memoryForeman((m, reply) => {
+      reply({ type: 'diff', requestId: 'unrelated', error: 'ignore me' });
+      const ack = { type: 'ack', re: m.id, ok: true };
+      const diff = { type: 'diff', requestId: m.requestId, files: [] };
+      for (const message of replyFirst ? [diff, ack] : [ack, diff]) reply(message);
+    });
+    assert.deepEqual((await fm.diff('r', 'worker')).files, []);
+    assert.equal(fm.waiters.size, 0);
+    assert.equal(fm.pendingAcks.size, 0);
+  });
+}
+
+test('diff propagates reply errors and clears resources', async () => {
+  const fm = memoryForeman((m, reply) => {
+    reply({ type: 'ack', re: m.id, ok: true });
+    reply({ type: 'diff', requestId: m.requestId, error: 'missing worktree' });
+  });
+  await assert.rejects(fm.diff('r', 'worker'), /missing worktree/);
+  assert.equal(fm.waiters.size, 0);
+  assert.equal(fm.pendingAcks.size, 0);
+});
 
 // A tiny stand-in for the Foreman's WS server (protocol v1 shapes from docs/protocol.md).
 function fakeForeman() {
