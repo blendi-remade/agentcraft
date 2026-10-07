@@ -47,7 +47,7 @@ dependencies {
 	testRuntimeOnly "org.junit.platform:junit-platform-launcher"
 	testImplementation "org.mockito:mockito-core:5.18.0"
 	minecraft "com.mojang:minecraft:${project.minecraft_version}"
-	compileOnly "eu.pb4:polymer-core:0.18.2+26.3"
+	implementation "eu.pb4:polymer-core:0.18.2+26.3"
 	implementation "net.fabricmc:fabric-loader:${project.loader_version}"
 	implementation "net.fabricmc.fabric-api:fabric-api:${project.fabric_api_version}"
 
