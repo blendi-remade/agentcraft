@@ -38,7 +38,7 @@ import { descendantsOf, killSnapshot, killTree, orphansOf, processTable, type Pr
 import { truncate } from '../util/text.js';
 import { leadSystemPrompt, planPrompt, RESUME_PROMPT, reviewPrompt, workerSystemPrompt, workPrompt } from './prompts.js';
 import { fetchPulls, githubOrigin, prRefs, pullBriefs, type PullRequest } from '../pulls.js';
-import type { Engine, EngineId, PermissionGate, Role, TurnStats } from './engine.js';
+import type { AuthCheck, Engine, EngineId, PermissionGate, Role, TurnStats } from './engine.js';
 import { agentTools, type ToolHooks, type TurnHandle } from './tools.js';
 import { modelLabel } from './models.js';
 import { userName } from '../user.js';
@@ -288,25 +288,30 @@ export class TeamBackend implements Backend {
       return true;
     }
     const engines = this.enginesInUse();
-    this.fm.setStatus({ auth: 'checking', message: `Checking ${engines.map((e) => e.label).join(' and ')} access...` });
+    // with several engines, each account / auth mode is prefixed with its engine's label
+    const tag = (engine: Engine, s: string) => (engines.length > 1 ? `${engine.label}: ${s}` : s);
+    this.fm.setStatus({ auth: 'checking', authMode: engines.map((e) => tag(e, e.authMode())).join(' · '), message: `Checking ${engines.map((e) => e.label).join(' and ')} access...` });
     const accounts: string[] = [];
+    const modes: string[] = [];
     for (const engine of engines) {
-      const r = await engine.checkAuth().catch((e: Error): { ok: false; message: string } => ({ ok: false, message: `${engine.label} check failed: ${e.message}` }));
+      const r = await engine.checkAuth().catch((e: Error): AuthCheck => ({ ok: false, message: `${engine.label} check failed: ${e.message}`, mode: engine.authMode() }));
       if (!r.ok) {
-        this.markAuthFailed(r.message);
+        this.markAuthFailed(r.message, tag(engine, r.mode ?? engine.authMode()));
         return false;
       }
-      accounts.push(engines.length > 1 ? `${engine.label}: ${r.account}` : r.account);
-      this.fm.log.info(`${engine.id} auth ok (${r.account})`);
+      accounts.push(tag(engine, r.account));
+      modes.push(tag(engine, r.mode));
+      this.fm.log.info(`${engine.id} auth ok via ${r.mode} (${r.account})`);
     }
     this.authFailed = false;
-    this.fm.setStatus({ auth: 'ok', account: accounts.join(' · '), message: this.teamLabel() });
+    this.fm.setStatus({ auth: 'ok', account: accounts.join(' · '), authMode: modes.join(' · '), message: this.teamLabel() });
     return true;
   }
 
-  private markAuthFailed(message: string): void {
+  /** `authMode`: the auth mode that was attempted (the auth check); a failed turn keeps the current one */
+  private markAuthFailed(message: string, authMode?: string): void {
     this.authFailed = true;
-    this.fm.setStatus({ auth: 'failed', message });
+    this.fm.setStatus({ auth: 'failed', message, ...(authMode ? { authMode } : {}) });
     this.fm.log.error(message);
     this.fm.bus.feed('error', message);
     this.fm.notify('warn', message);

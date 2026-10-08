@@ -65,6 +65,7 @@ describe('mixed team: Claude lead, Codex worker', () => {
   it('plans with Claude, builds with Codex, merges', async () => {
     const fm = h.fm;
     expect(fm.status.message).toBe('Claude lead opus · Codex workers gpt-fake');
+    expect(fm.status.authMode).toBe('Claude: claude login · Codex: ChatGPT login');
     // each nameplate shows its engine and model (the configured one until a turn reports the real one)
     expect(fm.agent('marlow')).toMatchObject({ engine: 'claude', model: 'Opus' });
     expect(fm.agent('kit')).toMatchObject({ engine: 'codex', model: 'gpt-fake' });

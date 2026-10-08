@@ -21,6 +21,9 @@ function Read-JsonFile([string]$Path) {
         $raw = [System.IO.File]::ReadAllText($Path)
         if ($raw.Length -gt 0 -and $raw[0] -eq [char]0xFEFF) { $raw = $raw.Substring(1) }
         if (-not $raw.Trim()) { return $null }
+        # PowerShell 7 turns ISO timestamps (pid start times) into DateTime objects, which later
+        # stringify without a zone and compare 'local vs UTC' wrong; keep them as the strings written
+        if ((Get-Command ConvertFrom-Json).Parameters.ContainsKey('DateKind')) { return $raw | ConvertFrom-Json -DateKind String }
         return $raw | ConvertFrom-Json
     } catch { return $null }
 }

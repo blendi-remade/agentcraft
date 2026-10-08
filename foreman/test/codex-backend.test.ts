@@ -105,6 +105,7 @@ describe('codex engine (fake app-server)', () => {
     expect(h.fm.status.backend).toBe('codex');
     expect(h.fm.status.auth).toBe('ok');
     expect(h.fm.status.account).toBe('ChatGPT plus');
+    expect(h.fm.status.authMode).toBe('ChatGPT login');
     expect(h.fm.status.message).toBe('Codex (lead gpt-fake, workers gpt-fake)');
   });
 

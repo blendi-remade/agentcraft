@@ -27,10 +27,18 @@ export class ClaudeEngine implements Engine {
     return `Claude authentication failed (${detail}). Run \`claude\` and /login, then restart the Foreman.`;
   }
 
+  /** "claude login" (opted in), else the API authentication the environment provides */
+  authMode(): string {
+    if (this.cfg.useClaudeLogin) return 'claude login';
+    const api = detectApiAuth(process.env);
+    return api.ok ? api.source : 'API key';
+  }
+
   async checkAuth(): Promise<AuthCheck> {
     // API authentication by default; the claude.ai login only when explicitly opted into
     const api = detectApiAuth(process.env);
-    if (!this.cfg.useClaudeLogin && !api.ok) return { ok: false, message: NO_API_AUTH_MESSAGE };
+    const mode = this.authMode();
+    if (!this.cfg.useClaudeLogin && !api.ok) return { ok: false, message: NO_API_AUTH_MESSAGE, mode };
     async function* never(): AsyncGenerator<never> {
       await new Promise(() => undefined);
     }
@@ -42,10 +50,11 @@ export class ClaudeEngine implements Engine {
       const account = this.cfg.useClaudeLogin
         ? [info.organization, info.subscriptionType].filter(Boolean).join(' · ') || info.apiProvider || 'ok'
         : [api.ok ? api.source : 'API', info.organization].filter(Boolean).join(' · ');
-      return { ok: true, account };
+      return { ok: true, account, mode };
     } catch (e) {
       return {
         ok: false,
+        mode,
         message: this.cfg.useClaudeLogin
           ? `Claude login check failed: ${(e as Error).message}. Run \`claude\` and /login, then restart the Foreman. The sim backend still works.`
           : `Claude API check failed: ${(e as Error).message}. Check ANTHROPIC_API_KEY (or your cloud provider settings), then restart the Foreman. The sim backend still works.`,

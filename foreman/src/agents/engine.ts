@@ -59,13 +59,16 @@ export interface TurnSpec {
   onModel?(model: string): void;
 }
 
-export type AuthCheck = { ok: true; account: string } | { ok: false; message: string };
+/** `mode`: how the engine authenticated, or tried to (e.g. "claude login", "API key", "Amazon Bedrock") */
+export type AuthCheck = { ok: true; account: string; mode: string } | { ok: false; message: string; mode?: string };
 
 export interface Engine {
   readonly id: EngineId;
   /** display name, e.g. "Claude" */
   readonly label: string;
   model(role: Role): string;
+  /** how the engine will authenticate, as known before checkAuth (shown while checking) */
+  authMode(): string;
   checkAuth(): Promise<AuthCheck>;
   runTurn(spec: TurnSpec): Promise<TurnStats>;
   /** what to tell the user when a turn failed authentication */

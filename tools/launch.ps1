@@ -264,6 +264,7 @@ if (-not ($DryRun -and -not $fmInfo.reused) -and (-not $NoForeman -or (Test-Port
         $authColor = 'Green'
         if ($f.auth -eq 'failed') { $authColor = 'Red' } elseif ($f.auth -ne 'ok') { $authColor = 'Yellow' }
         $line = "$($f.backend), auth $($f.auth)"
+        if ($f.authMode) { $line += " ($($f.authMode))" }
         if ($f.message) { $line += " - $($f.message)" }
         Write-Kv 'status' $line $authColor
         $decs = @($st.openDecisions).Count

@@ -183,6 +183,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `auth` | [AuthStatus](#authstatus) | yes | `failed` must be shown loudly (in-world banner): the claude backend cannot run. |
 | `message` | string | no | human-readable backend/auth status for the banner |
 | `account` | string | no | e.g. organization / plan when auth ok |
+| `authMode` | string | no | how the agents authenticate, e.g. "claude login", "API key", a cloud provider name |
 | `speed` | number | no | sim: speed multiplier |
 | `showcase` | boolean | no | sim: holding a static showcase state (`--showcase` or `--showcase late`) |
 | `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
