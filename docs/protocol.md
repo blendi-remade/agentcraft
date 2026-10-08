@@ -256,7 +256,8 @@ Full state. Sent in reply to every `hello`; the mod rebuilds its view from it.
     "version": "0.1.0",
     "backend": "claude",
     "auth": "ok",
-    "account": "fal · Claude Enterprise",
+    "authMode": "API key",
+    "account": "API key · fal",
     "message": "Claude (lead opus, workers sonnet)",
     "costUsd": 0.42
   },
@@ -813,6 +814,7 @@ Backend/auth status changed (banner).
     "version": "0.1.0",
     "backend": "claude",
     "auth": "failed",
+    "authMode": "claude login",
     "message": "Claude login check failed: not logged in. Run `claude` and /login, then restart the Foreman."
   }
 }

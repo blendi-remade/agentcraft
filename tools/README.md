@@ -39,7 +39,7 @@ The mod also runs in a normal Fabric instance for Minecraft 26.3 with Fabric Loa
 
 ## Windows
 
-Windows PowerShell 5.1+ and Node 22. `launch.ps1` installs the npm dependencies it needs on the
+Windows PowerShell 5.1 or PowerShell 7 (`pwsh -File tools\launch.ps1 ...`) and Node 22. `launch.ps1` installs the npm dependencies it needs on the
 first run (`npm ci` in `foreman/` and `tools/`); the Gradle wrapper downloads Gradle, Minecraft
 and Fabric by itself. Java 25 must be installed (Temurin 25: https://adoptium.net).
 
@@ -48,6 +48,7 @@ and Fabric by itself. Java 25 must be installed (Temurin 25: https://adoptium.ne
 ```powershell
 tools\launch.ps1                              # claude backend, state in ~/.agentcraft, Foreman :7878, DevBridge :7879
 tools\launch.ps1 -Repo C:\code\life-tracker   # also register a repo with the Foreman
+tools\launch.ps1 -UseClaudeLogin              # your `claude` CLI login instead of an API key (personal use); banner: auth ok (claude login)
 tools\launch.ps1 -Backend sim                 # scripted demo team (no API calls), demo repo in sandbox/
 tools\launch.ps1 -Showcase                    # static showcase state (sim); -Showcase late for the later one
 tools\stop.ps1                                # stop what launch.ps1 started (game + Foreman)

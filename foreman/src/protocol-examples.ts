@@ -94,7 +94,7 @@ export const SERVER_EXAMPLES: Ex<ServerMessage> = {
   snapshot: {
     v: 1,
     type: 'snapshot',
-    foreman: { version: '0.1.0', backend: 'claude', auth: 'ok', account: 'fal · Claude Enterprise', message: 'Claude (lead opus, workers sonnet)', costUsd: 0.42 },
+    foreman: { version: '0.1.0', backend: 'claude', auth: 'ok', authMode: 'API key', account: 'API key · fal', message: 'Claude (lead opus, workers sonnet)', costUsd: 0.42 },
     agents: [agent],
     tasks: [task],
     decisions: [decision],
@@ -179,7 +179,7 @@ export const SERVER_EXAMPLES: Ex<ServerMessage> = {
     truncated: false,
   },
   notify: { v: 1, type: 'notify', level: 'need_user', text: 'Marlow: Merge t2 "Tag parser module" into main?', decisionId: 'd2', ts: ts + 120_000 },
-  'foreman.status': { v: 1, type: 'foreman.status', status: { version: '0.1.0', backend: 'claude', auth: 'failed', message: 'Claude login check failed: not logged in. Run `claude` and /login, then restart the Foreman.' } },
+  'foreman.status': { v: 1, type: 'foreman.status', status: { version: '0.1.0', backend: 'claude', auth: 'failed', authMode: 'claude login', message: 'Claude login check failed: not logged in. Run `claude` and /login, then restart the Foreman.' } },
   ack: { v: 1, type: 'ack', re: 'c12', ok: true, result: { goalId: 'g2' } },
   error: { v: 1, type: 'error', message: 'no agent named "kitt"', re: 'c13' },
 };

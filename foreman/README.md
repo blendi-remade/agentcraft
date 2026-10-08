@@ -81,6 +81,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--codex-path` / `AGENTCRAFT_CODEX_PATH` | `codex` on PATH, else the Codex app's | the Codex CLI |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
+| `--use-claude-login` / `AGENTCRAFT_USE_CLAUDE_LOGIN=1` / config `claude.useClaudeLogin` | off | personal use only: your `claude` CLI login instead of an API key. Any `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_*` switch in the shell is withheld from the agents; `foreman.status.authMode` reads `claude login` |
 | `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
 | `--profile` | backend name | state lives in `<home>/<profile>` |
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
@@ -323,7 +324,8 @@ spawns git with an empty environment); the policy refuses every command it can s
 
 `src/protocol.ts` (zod) is the source of truth; `docs/protocol.md` is generated from it with field
 tables and a JSON example per message (`npm run gen:protocol-doc`; `npm run check:protocol-doc`
-fails if it is stale). Highlights beyond the spec draft: `foreman.status` (backend/auth banner),
+fails if it is stale). Highlights beyond the spec draft: `foreman.status` (backend/auth banner, with
+`authMode`: `claude login`, `API key`, a cloud provider name or the Codex equivalents),
 `ack`/`error` replies for messages with an `id`, `snapshot.logs`/`snapshot.goals`,
 `Agent.active/paused/worktree/title`, task status `cancelled`, decision status `cancelled`.
 
