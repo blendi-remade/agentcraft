@@ -23,6 +23,11 @@ recorded by this launcher. Agent decisions show a desktop notification (Notifica
 macOS, `notify-send` on Linux). The screenshot QA command, `node tools/qa.mjs`, also uses this
 launcher on macOS and Linux.
 
+### Steam Deck
+
+`tools/steamdeck/install.sh` sets up Java, Node, controller support (Controlify) and a Steam
+library entry; see [steamdeck/README.md](steamdeck/README.md).
+
 ### Your own launcher instance (Prism, MultiMC, ...)
 
 The mod also runs in a normal Fabric instance for Minecraft 26.3 with Fabric Loader 0.19.5+:
