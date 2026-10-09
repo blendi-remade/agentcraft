@@ -1,6 +1,6 @@
 // One realistic example per message type. Used by docs/protocol.md generation and by the
 // protocol round-trip tests (every example must validate against its schema).
-import type { Agent, ClientMessage, Decision, MemoryEntry, Repo, ServerMessage, Task } from './protocol.js';
+import type { Agent, ClientMessage, Decision, MemoryEntry, Repo, ServerMessage, Task, Usage } from './protocol.js';
 
 const ts = 1790850000000;
 
@@ -88,13 +88,29 @@ const memory: MemoryEntry = {
   author: 'marlow',
 };
 
+/** `foreman.status.usage` per auth mode: plan rate-limit windows under the claude.ai login, none for an API key. */
+export const USAGE_EXAMPLES: { subscription: Usage; api: Usage } = {
+  subscription: {
+    mode: 'subscription',
+    plan: 'max',
+    windows: [
+      { id: 'session', label: '5h', utilization: 62, resetsAt: '2026-10-01T13:20:00.063786+00:00', active: true },
+      { id: 'weekly', label: '7d', utilization: 34, resetsAt: '2026-10-05T20:00:00.063805+00:00', active: false },
+      { id: 'weekly:fable', label: 'Fable', utilization: 43, resetsAt: '2026-10-05T20:00:00.063946+00:00', active: false },
+    ],
+    extra: { enabled: false, usedCredits: null, monthlyLimit: null, utilization: null },
+    fetchedAt: ts + 240_000,
+  },
+  api: { mode: 'api', windows: [], fetchedAt: ts + 60_000 },
+};
+
 type Ex<T> = Record<string, T>;
 
 export const SERVER_EXAMPLES: Ex<ServerMessage> = {
   snapshot: {
     v: 1,
     type: 'snapshot',
-    foreman: { version: '0.1.0', backend: 'claude', auth: 'ok', account: 'fal · Claude Enterprise', message: 'Claude (lead opus, workers sonnet)', costUsd: 0.42 },
+    foreman: { version: '0.1.0', backend: 'claude', auth: 'ok', authMode: 'API key', account: 'API key · fal', message: 'Claude (lead opus, workers sonnet)', costUsd: 0.42, usage: USAGE_EXAMPLES.api },
     agents: [agent],
     tasks: [task],
     decisions: [decision],
@@ -179,7 +195,11 @@ export const SERVER_EXAMPLES: Ex<ServerMessage> = {
     truncated: false,
   },
   notify: { v: 1, type: 'notify', level: 'need_user', text: 'Marlow: Merge t2 "Tag parser module" into main?', decisionId: 'd2', ts: ts + 120_000 },
-  'foreman.status': { v: 1, type: 'foreman.status', status: { version: '0.1.0', backend: 'claude', auth: 'failed', message: 'Claude login check failed: not logged in. Run `claude` and /login, then restart the Foreman.' } },
+  'foreman.status': {
+    v: 1,
+    type: 'foreman.status',
+    status: { version: '0.1.0', backend: 'claude', auth: 'ok', authMode: 'claude login', account: 'Acme · max', message: 'Claude (lead opus, workers sonnet)', costUsd: 1.94, usage: USAGE_EXAMPLES.subscription },
+  },
   ack: { v: 1, type: 'ack', re: 'c12', ok: true, result: { goalId: 'g2' } },
   error: { v: 1, type: 'error', message: 'no agent named "kitt"', re: 'c13' },
 };

@@ -7,6 +7,7 @@ import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.foreman.Protocol.FeedItem;
 import dev.agentcraft.client.foreman.Protocol.Goal;
 import dev.agentcraft.client.foreman.Protocol.LogEntry;
+import dev.agentcraft.client.foreman.UsageText;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
@@ -56,6 +57,8 @@ final class MonitorScreen {
 	long agentSeq = Long.MIN_VALUE;
 	Mode mode = Mode.CONNECTING;
 	String connectText = "";
+	/** Plan usage line of the feed screen, keyed by its text (fetchedAt changes every poll, the text rarely). */
+	String usageText = "";
 
 	// --- geometry (face px; origin = panel top-left)
 	float bx0, by0, bx1, by1;     // inside the bezel
@@ -72,6 +75,8 @@ final class MonitorScreen {
 	String dotFamily = "idle";
 	@Nullable FormattedCharSequence activity;
 	float activityX, activityY;
+	@Nullable FormattedCharSequence usage;
+	float usageY;
 	@Nullable FormattedCharSequence pill;
 	float pillX;
 	int pillColor;
@@ -130,8 +135,9 @@ final class MonitorScreen {
 			m = a == null ? Mode.NO_AGENT : !a.isActive() ? Mode.OFF_SHIFT : Mode.LIVE;
 		}
 		String connect = m == Mode.CONNECTING ? connectText(s) : "";
+		String usageLine = m == Mode.FEED ? java.util.Objects.requireNonNullElse(UsageText.summary(s, UsageText.HEADER_WINDOWS), "") : "";
 		boolean same = m == mode && id.equals(agentId) && st == style && ppb == this.ppb && panelW == this.panelW && panelH == this.panelH
-			&& logSeq == this.logSeq && agentSeq == this.agentSeq && connect.equals(connectText);
+			&& logSeq == this.logSeq && agentSeq == this.agentSeq && connect.equals(connectText) && usageLine.equals(usageText);
 		if (same) {
 			return false;
 		}
@@ -146,6 +152,7 @@ final class MonitorScreen {
 		this.logSeq = logSeq;
 		this.agentSeq = agentSeq;
 		this.connectText = connect;
+		this.usageText = usageLine;
 		Font font = Minecraft.getInstance().font;
 		geometry(font);
 		header(font, s);
@@ -182,6 +189,7 @@ final class MonitorScreen {
 		ScreenStyle st = style;
 		name = null;
 		activity = null;
+		usage = null;
 		pill = null;
 		footer = null;
 		caret = false;
@@ -253,6 +261,12 @@ final class MonitorScreen {
 				activityX = cx0;
 				activityY = y + LogRows.LINE;
 				headerBottom = y + LogRows.LINE + 10;
+				if (!usageText.isEmpty() && !narrow) {
+					// account-wide plan windows, the console header's wording
+					usage = LogRows.seq(TextUtil.ellipsize(font, usageText, w));
+					usageY = y + 2 * LogRows.LINE;
+					headerBottom = y + 2 * LogRows.LINE + 10;
+				}
 			}
 			case CONNECTING -> {
 				// keep whose screen this is (from the cast, no Foreman needed), then why it is empty

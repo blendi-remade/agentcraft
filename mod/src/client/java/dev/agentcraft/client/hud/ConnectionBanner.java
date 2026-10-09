@@ -7,6 +7,7 @@ import dev.agentcraft.client.foreman.LinkStatus.Phase;
 import dev.agentcraft.client.foreman.Protocol.AuthStatus;
 import dev.agentcraft.client.foreman.Protocol.BackendName;
 import dev.agentcraft.client.foreman.Protocol.ForemanStatus;
+import dev.agentcraft.client.foreman.UsageText;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
@@ -22,8 +23,9 @@ import net.minecraft.util.Util;
  * Small Foreman status pill in the top-right corner, and a loud banner at the top centre when the
  * claude backend cannot authenticate.
  * <ul>
- *   <li>connected: quiet ink pill, teal dot, "Foreman · sim" (or the claude account); fades to a
- *       lower opacity after a few seconds;</li>
+ *   <li>connected: quiet ink pill, teal dot, "Foreman · sim" (or the claude account, plus the first
+ *       two plan windows on a subscription: "5h 62% · 7d 34%"); fades to a lower opacity after a few
+ *       seconds;</li>
  *   <li>reconnecting (it was connected): clay pulsing dot, "Reconnecting to the Foreman", attempt
  *       count, and "showing last known state";</li>
  *   <li>never connected: grey dot, "Foreman not running" + how to start it;</li>
@@ -32,6 +34,8 @@ import net.minecraft.util.Util;
  */
 public final class ConnectionBanner implements HudElement {
 	private static final int MARGIN = 6;
+	/** Widest detail line (gui px) on a wide screen; see {@link #detailBudget}. */
+	private static final int DETAIL_MAX_PX = 260;
 	private static final long FADE_AFTER_MS = 6000;
 
 	/**
@@ -68,9 +72,10 @@ public final class ConnectionBanner implements HudElement {
 		} else if (link.synced()) {
 			dot = fs != null && fs.auth() == AuthStatus.FAILED ? "error" : fs != null && fs.auth() == AuthStatus.CHECKING ? "thinking" : "working";
 			title = "Foreman · " + backendLabel(fs);
-			if (fs != null && fs.backend() != BackendName.SIM && fs.account() != null) {
-				detail = fs.account();
-			}
+			String account = fs != null && fs.backend() != BackendName.SIM ? fs.account() : null;
+			// plan windows next to the account, kept short: the first two ("5h 62% · 7d 34%")
+			String usage = fs == null || fs.backend() == BackendName.SIM ? null : UsageText.summary(st, 2);
+			detail = fitDetail(font, account, usage, detailBudget(g.guiWidth()));
 			if (now - link.sinceMs() > FADE_AFTER_MS) {
 				alpha = 150;
 			}
@@ -103,12 +108,45 @@ public final class ConnectionBanner implements HudElement {
 		};
 	}
 
+	/** Widest the pill's detail line may get: 45 % of the screen, at most {@link #DETAIL_MAX_PX}. */
+	private static int detailBudget(int guiWidth) {
+		return Math.max(40, Math.min(DETAIL_MAX_PX, guiWidth * 45 / 100));
+	}
+
+	/**
+	 * "account · usage" within {@code budget} px. The usage summary wins: the account is shortened
+	 * (then dropped) first, the usage only ellipsized when it alone is too wide.
+	 */
+	private static String fitDetail(Font font, String account, String usage, int budget) {
+		boolean hasAccount = account != null && !account.isBlank();
+		if (usage == null) {
+			return hasAccount ? TextUtil.ellipsize(font, account, budget) : null;
+		}
+		String u = TextUtil.ellipsize(font, usage, budget);
+		if (!hasAccount) {
+			return u;
+		}
+		String sep = " · ";
+		int left = budget - font.width(u) - font.width(sep);
+		if (left < font.width("ab" + TextUtil.ELLIPSIS)) {
+			return u;
+		}
+		String a = TextUtil.ellipsize(font, account, left);
+		return a.isEmpty() ? u : a + sep + u;
+	}
+
 	private static String trim(double d) {
 		return d == Math.rint(d) ? Long.toString((long) d) : Double.toString(d);
 	}
 
 	private static void drawPill(GuiGraphicsExtractor g, Font font, String dot, String title, String detail, int alpha, boolean pulse, long now) {
 		Kit.Padding p = Kit.padding("tooltip");
+		// never wider than the screen: whatever still overflows is ellipsized so the pill stays on it
+		int maxText = Math.max(20, g.guiWidth() - 2 * MARGIN - p.left() - 11 - 4 - p.right());
+		title = TextUtil.ellipsize(font, title, maxText);
+		if (detail != null) {
+			detail = TextUtil.ellipsize(font, detail, maxText);
+		}
 		int textW = Math.max(font.width(title), detail == null ? 0 : font.width(detail));
 		int w = p.left() + 11 + 4 + textW + p.right();
 		int h = p.top() + 9 + (detail == null ? 0 : 10) + p.bottom();

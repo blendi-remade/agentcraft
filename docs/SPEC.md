@@ -39,7 +39,7 @@ Minecraft 26.3 (Fabric mod "agentcraft", Java 25)          Foreman (Node 22 + Ty
 **Field-level reference with JSON examples: `docs/protocol.md`** (generated from the zod schemas;
 `npm run check:protocol-doc` in `foreman/` fails if it is stale). The list below is the overview.
 Additions made while building the Foreman (2026-10-01): `foreman.status` {status: backend/auth/
-message for the banner} (also in `snapshot.foreman`); `ack` {re, ok, error?, result?} for any client
+authMode/message for the banner} (also in `snapshot.foreman`); `ack` {re, ok, error?, result?} for any client
 message with an `id`, and `error` {message, re?}; `snapshot.goals[]` and `snapshot.logs[]` (log tail
 per agent); Agent `title`, `accent`, `worktree`, `paused`, `active` (off-shift agents); Task
 `description`, `goalId`, `priority`, `branch`, `worktree`, `ci`, `blockedReason`, `summary`,
@@ -107,7 +107,8 @@ served **by the mod client**:
    `permission` decisions in-world. Safe edits/reads inside the worktree auto-allowed.
 7. **Graceful auth failure**: if the Claude backend can't authenticate, the Foreman says so loudly
    (in-world banner + console) and the `sim` backend can still be used for demos. Auth check uses
-   the logged-in `claude` CLI credentials (Agent SDK) or `ANTHROPIC_API_KEY`.
+   `ANTHROPIC_API_KEY` or a cloud provider switch (Agent SDK), or with `--use-claude-login` the
+   logged-in `claude` CLI credentials; the status names the mode (`authMode`).
 8. **Performance**: 60+ fps in HQ on an RTX 4090; text renderers batch; no per-frame allocations in hot paths.
 9. **One-command launch** and a `README.md` a stranger could follow.
 

@@ -71,6 +71,11 @@ public final class UiBits {
 		return UiStyle.color("monitor.error", 0xFF9A2F2B);
 	}
 
+	/** Warning text on paper (a usage window past 80 %): the amber {@code paper.warn_fg}, clay-dark if the token is missing. */
+	public static int warnText() {
+		return UiStyle.color("paper.warn_fg", UiStyle.CLAY_DARK);
+	}
+
 	/** Positive text on paper ("sent", "pass"). */
 	public static int okText() {
 		return UiStyle.color("paper.add_fg", 0xFF455746);

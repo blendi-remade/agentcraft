@@ -24,7 +24,7 @@ import org.jspecify.annotations.Nullable;
 public final class ConsoleLog {
 	/** Tone of a local line. */
 	public enum Tone {
-		INFO, OK, ERROR, ECHO, HEADER, HELP, FILE
+		INFO, OK, WARN, ERROR, ECHO, HEADER, HELP, FILE
 	}
 
 	/** One display line: a feed item or a local line. */

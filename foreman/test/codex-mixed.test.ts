@@ -65,6 +65,10 @@ describe('mixed team: Claude lead, Codex worker', () => {
   it('plans with Claude, builds with Codex, merges', async () => {
     const fm = h.fm;
     expect(fm.status.message).toBe('Claude lead opus · Codex workers gpt-fake');
+    expect(fm.status.authMode).toBe('Claude: claude login · Codex: ChatGPT login');
+    // plan usage comes from the Claude engine only (this fake SDK has no usage method, so it says so)
+    await until(() => !!fm.status.usage);
+    expect(fm.status.usage).toMatchObject({ mode: 'subscription', windows: [], error: 'usage API not available in this SDK' });
     // each nameplate shows its engine and model (the configured one until a turn reports the real one)
     expect(fm.agent('marlow')).toMatchObject({ engine: 'claude', model: 'Opus' });
     expect(fm.agent('kit')).toMatchObject({ engine: 'codex', model: 'gpt-fake' });

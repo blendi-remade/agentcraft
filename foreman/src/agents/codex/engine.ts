@@ -48,6 +48,9 @@ const OFF_FEATURES = [
 
 const CLIENT_INFO = { name: 'agentcraft', title: 'AgentCraft', version: '0.1.0' };
 
+/** account/read account types, as auth modes */
+const ACCOUNT_MODES: Record<string, string> = { chatgpt: 'ChatGPT login', apiKey: 'OpenAI API key', amazonBedrock: 'Amazon Bedrock' };
+
 function notes(role: Role, tools: AgentTool[]): string {
   return [
     '',
@@ -124,9 +127,15 @@ export class CodexEngine implements Engine {
     server.notify('initialized');
   }
 
+  /** whatever `codex login` set up (ChatGPT or an OpenAI API key); checkAuth says which */
+  authMode(): string {
+    return 'codex login';
+  }
+
   async checkAuth(): Promise<AuthCheck> {
     const bin = this.bin();
-    if (!bin) return { ok: false, message: CODEX_NOT_FOUND };
+    const mode = this.authMode();
+    if (!bin) return { ok: false, message: CODEX_NOT_FOUND, mode };
     const server = new AppServer(bin, { cwd: os.homedir(), env: this.serverEnv(process.env), ...(this.opts.args ? { args: this.opts.args } : {}) });
     try {
       await this.initialize(server);
@@ -134,11 +143,12 @@ export class CodexEngine implements Engine {
       if (typeof cfg?.config?.model === 'string') this.configuredModel = cfg.config.model;
       const r = await server.request<any>('account/read', {}, 30_000);
       const a = r?.account;
-      if (!a && r?.requiresOpenaiAuth !== false) return { ok: false, message: 'Codex is not logged in. Run `codex login` (ChatGPT or an OpenAI API key), then restart the Foreman. The sim backend still works.' };
+      if (!a && r?.requiresOpenaiAuth !== false) return { ok: false, message: 'Codex is not logged in. Run `codex login` (ChatGPT or an OpenAI API key), then restart the Foreman. The sim backend still works.', mode };
       const account = a?.type === 'chatgpt' ? `ChatGPT${a.planType ? ` ${a.planType}` : ''}` : a?.type === 'apiKey' ? 'OpenAI API key' : a?.type === 'amazonBedrock' ? 'Amazon Bedrock' : 'ok';
-      return { ok: true, account };
+      // no account but none required: the configured model provider needs no OpenAI login
+      return { ok: true, account, mode: a ? (ACCOUNT_MODES[a.type] ?? mode) : 'custom provider' };
     } catch (e) {
-      return { ok: false, message: `Codex check failed: ${errorText(e)}. Check that \`codex\` works and you are logged in (\`codex login\`), then restart the Foreman. The sim backend still works.` };
+      return { ok: false, message: `Codex check failed: ${errorText(e)}. Check that \`codex\` works and you are logged in (\`codex login\`), then restart the Foreman. The sim backend still works.`, mode };
     } finally {
       server.close();
     }

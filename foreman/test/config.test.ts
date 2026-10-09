@@ -64,6 +64,23 @@ describe('loadConfig argument checking', () => {
   });
 });
 
+describe('use-claude-login', () => {
+  it('comes from --use-claude-login, AGENTCRAFT_USE_CLAUDE_LOGIN or config.json claude.useClaudeLogin (not a top-level key)', () => {
+    home = tempDir();
+    const login = (args: string[] = [], env: NodeJS.ProcessEnv = {}) => loadConfig(['--home', home!, ...args], env).claude.useClaudeLogin;
+    expect(login()).toBe(false);
+    expect(login(['--use-claude-login'])).toBe(true);
+    expect(login([], { AGENTCRAFT_USE_CLAUDE_LOGIN: '1' })).toBe(true);
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ useClaudeLogin: true }));
+    expect(login()).toBe(false); // the key path is claude.useClaudeLogin
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ claude: { useClaudeLogin: true } }));
+    expect(login()).toBe(true);
+    // flag and env still decide over config.json
+    expect(login([], { AGENTCRAFT_USE_CLAUDE_LOGIN: '0' })).toBe(false);
+    expect(login(['--use-claude-login'], { AGENTCRAFT_USE_CLAUDE_LOGIN: '0' })).toBe(true);
+  });
+});
+
 describe('user name', () => {
   it('comes from --user-name, then AGENTCRAFT_USER_NAME, then config.json, else the OS account', async () => {
     const fs = await import('node:fs');

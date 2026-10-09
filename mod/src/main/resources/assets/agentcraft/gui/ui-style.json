@@ -58,6 +58,7 @@
     "hunk": "#195E5D",
     "add_fg": "#455746",
     "del_fg": "#873C2A",
+    "warn_fg": "#8F5A00",
     "link": "#874431",
     "disabled": "#A39B8E",
     "add_bg": "#D6DDCC",

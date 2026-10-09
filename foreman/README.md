@@ -81,6 +81,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--codex-path` / `AGENTCRAFT_CODEX_PATH` | `codex` on PATH, else the Codex app's | the Codex CLI |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
+| `--use-claude-login` / `AGENTCRAFT_USE_CLAUDE_LOGIN=1` / config `claude.useClaudeLogin` | off | personal use only: your `claude` CLI login instead of an API key. Any `ANTHROPIC_API_KEY`, `ANTHROPIC_AUTH_TOKEN`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_*` switch in the shell is withheld from the agents; `foreman.status.authMode` reads `claude login` |
 | `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
 | `--profile` | backend name | state lives in `<home>/<profile>` |
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
@@ -96,6 +97,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--ci "<cmd>"` | detected (`npm test`, `cargo test`, ...) | run after each task |
 | `--lead-read-commands "<cmd>,..."` | none | read commands the lead runs without asking, by prefix: `"bd show,gh issue view"` lets it read your issue tracker |
 | `--no-lead-review` | | merge decisions go to you without a lead review turn |
+| `--no-usage` / config `claude.usagePoll: false` | on | no `foreman.status.usage` polling (with `--use-claude-login` each poll runs a `claude` process: every minute while Claude agents work, every 5 min idle) |
 | `--repo-poll-ms` | `10000` | how often checkouts are checked for head/dirty changes |
 | `--merge-style merge\|squash` / `AGENTCRAFT_MERGE_STYLE` | `merge` | approved merges: a merge commit that keeps the agents' commits, or one squashed commit (see Safety guarantees) |
 | `--no-sign-merges` / `AGENTCRAFT_SIGN_MERGES=0` | signed if your git config signs (claude) | never sign approved merge commits; the sim never signs |
@@ -323,7 +325,9 @@ spawns git with an empty environment); the policy refuses every command it can s
 
 `src/protocol.ts` (zod) is the source of truth; `docs/protocol.md` is generated from it with field
 tables and a JSON example per message (`npm run gen:protocol-doc`; `npm run check:protocol-doc`
-fails if it is stale). Highlights beyond the spec draft: `foreman.status` (backend/auth banner),
+fails if it is stale). Highlights beyond the spec draft: `foreman.status` (backend/auth banner, with
+`authMode`: `claude login`, `API key`, a cloud provider name or the Codex equivalents, and
+`usage`: the spend mode plus, under the claude.ai login, the plan's rate-limit windows),
 `ack`/`error` replies for messages with an `id`, `snapshot.logs`/`snapshot.goals`,
 `Agent.active/paused/worktree/title`, task status `cancelled`, decision status `cancelled`.
 
@@ -365,6 +369,6 @@ npm run check       # all of the above + protocol doc freshness
 - **`port 7878 is already in use`**: another Foreman is running (`~/.agentcraft/foreman.json` and `~/.agentcraft/<profile>/foreman.json` have its pid) - or use `--port`.
 - **`profile "claude" is in use by the Foreman pid N`**: that profile already has a running Foreman; stop it or use `--profile`.
 - **`... is not a repository root`**: `/repo add` the repository's top folder (the message names it).
-- **Banner says auth failed**: set `ANTHROPIC_API_KEY` (or a cloud provider switch) and restart the Foreman. With `--use-claude-login`: run `claude` and `/login`. The sim backend works without auth. Why the claude.ai login is opt-in: Anthropic does not allow third-party tools to offer it ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)); see `src/agents/claude/auth.ts`.
+- **Banner says auth failed**: the parentheses show the auth mode that was tried (`API key`, a cloud provider or `claude login`). Set `ANTHROPIC_API_KEY` (or a cloud provider switch) and restart the Foreman. With `--use-claude-login`: run `claude` and `/login`. The sim backend works without auth. Why the claude.ai login is opt-in: Anthropic does not allow third-party tools to offer it ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)); see `src/agents/claude/auth.ts`.
 - **Merge refused: uncommitted changes**: commit or stash in your checkout, then choose Merge again (the decision re-opened).
 - **Reset the demo repo**: `node sandbox/create-demo.mjs --force`.

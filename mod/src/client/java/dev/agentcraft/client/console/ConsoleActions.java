@@ -29,6 +29,10 @@ import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.Repo;
 import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
+import dev.agentcraft.client.foreman.Protocol.Usage;
+import dev.agentcraft.client.foreman.Protocol.UsageExtra;
+import dev.agentcraft.client.foreman.Protocol.UsageWindow;
+import dev.agentcraft.client.foreman.UsageText;
 import dev.agentcraft.client.hud.HudSounds;
 import dev.agentcraft.client.hud.UiBits;
 import java.util.ArrayList;
@@ -317,10 +321,7 @@ public final class ConsoleActions {
 		StringBuilder tb = new StringBuilder("tasks: ");
 		counts.forEach((k, v) -> tb.append(v).append(' ').append(k.wire()).append("  "));
 		ConsoleLog.add(Tone.INFO, tb.toString().strip());
-		String spend = spendLabel(s);
-		if (spend != null) {
-			ConsoleLog.add(Tone.INFO, "Claude API spend so far: " + spend + " (estimated, this profile)");
-		}
+		usage(s);
 		for (Agent a : s.agents().values()) {
 			String st = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.state().wire().replace('_', ' ');
 			ConsoleLog.add(Tone.INFO, a.name() + " \u00b7 " + st + (a.activity().isEmpty() ? "" : " \u00b7 " + a.activity()) + (a.taskId() != null ? " ("
@@ -333,6 +334,58 @@ public final class ConsoleActions {
 			for (Decision d : open) {
 				ConsoleLog.add(Tone.INFO, d.id() + " " + DecisionQueue.kindLabel(d.kind()) + ": " + ConsoleCommands.oneLine(d.question(), 80), d.agentId());
 			}
+		}
+	}
+
+	/**
+	 * Spend and plan usage lines of {@code /status}. API key: the spend estimate as before. Claude
+	 * subscription: the plan, one line per rate-limit window (countdown from the client clock, the
+	 * binding window marked with "&gt;"), extra-usage credits, the poll error, and the spend demoted
+	 * to a notional figure. No usage object (older Foreman, sim): only the spend line.
+	 */
+	private static void usage(ForemanState s) {
+		Usage u = UsageText.usage(s);
+		boolean sub = u != null && u.isSubscription();
+		long now = System.currentTimeMillis();
+		if (sub) {
+			String plan = UsageText.planName(u.plan());
+			String asOf = u.fetchedAt() > 0 && now - u.fetchedAt() > 15 * 60_000L ? " (as of " + UiBits.clock(u.fetchedAt()) + ")" : "";
+			ConsoleLog.add(Tone.INFO, (plan != null ? "Claude " + plan + " plan" : "Claude subscription")
+				+ " · whole-account usage, not only AgentCraft" + asOf);
+			for (UsageWindow w : u.windows()) {
+				String noun = UsageText.kindNoun(w);
+				int sev = UsageText.severity(w.utilization());
+				ConsoleLog.add(sev == 2 ? Tone.ERROR : sev == 1 ? Tone.WARN : Tone.INFO, (w.isActive() ? "> " : "") + w.label()
+					+ (noun.isEmpty() ? "" : " " + noun) + " · " + UsageText.percent(w.utilization()) + " used · "
+					+ UsageText.resets(w.resetsAt(), now));
+			}
+			UsageExtra x = u.extra();
+			if (x != null && x.enabled()) {
+				// amounts are major units (dollars); money only when both are known, else the percent alone
+				Double usedAmt = x.usedCredits();
+				Double limitAmt = x.monthlyLimit();
+				String text;
+				if (usedAmt != null && limitAmt != null) {
+					text = UsageText.money(usedAmt, x.currency()) + " of " + UsageText.money(limitAmt, x.currency()) + " this month";
+				} else if (x.utilization() != null) {
+					text = UsageText.percent(x.utilization()) + " of this month's credits";
+				} else {
+					text = "enabled";
+				}
+				int sev = UsageText.severity(x.utilization());
+				ConsoleLog.add(sev == 2 ? Tone.ERROR : sev == 1 ? Tone.WARN : Tone.INFO, "extra usage · " + text);
+			}
+		}
+		if (u != null && u.error() != null && !u.error().isBlank()) {
+			ConsoleLog.add(Tone.WARN, "usage: " + ConsoleCommands.oneLine(u.error(), 100)
+				+ (u.isStale() && !u.windows().isEmpty() ? " (showing the last good numbers)" : ""));
+		} else if (u != null && u.isStale() && sub) {
+			ConsoleLog.add(Tone.WARN, "usage: the last poll failed, showing the last good numbers");
+		}
+		String spend = spendLabel(s);
+		if (spend != null) {
+			ConsoleLog.add(Tone.INFO, sub ? "Claude spend: est. " + spend + " (notional, not billed on a subscription; this profile)"
+				: "Claude API spend so far: " + spend + " (estimated, this profile)");
 		}
 	}
 

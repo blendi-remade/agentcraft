@@ -24,6 +24,12 @@ export const CLAUDE_LOGIN_VARS = ['CLAUDE_CODE_OAUTH_TOKEN'];
  */
 export const API_KEY_VARS = ['ANTHROPIC_API_KEY', 'ANTHROPIC_AUTH_TOKEN'];
 
+/**
+ * Everything removed under --use-claude-login: the API key / token, a gateway URL and the cloud
+ * provider switches, any of which would route the agents past the claude.ai login.
+ */
+export const LOGIN_MODE_DROP_VARS = [...API_KEY_VARS, 'ANTHROPIC_BASE_URL', ...Object.keys(PROVIDER_SWITCHES)];
+
 export type ApiAuth = { ok: true; source: string } | { ok: false };
 
 const truthy = (v: string | undefined) => !!v && v !== '0' && v.toLowerCase() !== 'false';
@@ -38,13 +44,13 @@ export function detectApiAuth(env: NodeJS.ProcessEnv = process.env): ApiAuth {
 
 /**
  * The environment for agent CLI processes: in API mode, no claude.ai login token is passed on (the
- * CLI then authenticates with the key/provider); with --use-claude-login no API key or auth token
- * is passed on (the CLI then uses the login). Names are matched in any letter case. The values are
- * never logged.
+ * CLI then authenticates with the key/provider); with --use-claude-login none of
+ * LOGIN_MODE_DROP_VARS is passed on (the CLI then uses the login). Names are matched in any letter
+ * case. The values are never logged.
  */
 export function withAuthMode(env: Record<string, string | undefined>, useClaudeLogin: boolean): Record<string, string | undefined> {
   const out = { ...env };
-  const drop = useClaudeLogin ? API_KEY_VARS : CLAUDE_LOGIN_VARS;
+  const drop = useClaudeLogin ? LOGIN_MODE_DROP_VARS : CLAUDE_LOGIN_VARS;
   for (const k of Object.keys(out)) if (drop.includes(k.toUpperCase())) delete out[k];
   return out;
 }

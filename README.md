@@ -212,7 +212,9 @@ the first time; in an older world, rebuild it with `/agentcraft hq`.
 > runs the agents on your own `claude` CLI login instead of an API key. Anthropic does not allow
 > third party tools to offer claude.ai login to their users, so this is off by default and meant for
 > running AgentCraft yourself. To make it permanent for yourself, put
-> `{"claude": {"useClaudeLogin": true}}` in `~/.agentcraft/config.json`.
+> `{"claude": {"useClaudeLogin": true}}` in `~/.agentcraft/config.json`. In this mode an
+> `ANTHROPIC_API_KEY`, `ANTHROPIC_BASE_URL` or `CLAUDE_CODE_USE_*` provider switch left in the shell
+> is not passed to the agents; the banner shows `auth ok (claude login)`.
 
 **Codex.** AgentCraft also runs Codex agents. With the Codex CLI or the Codex desktop app installed
 and logged in (`codex login`, with ChatGPT or an OpenAI API key):

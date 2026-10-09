@@ -2,13 +2,15 @@ import { describe, expect, it } from 'vitest';
 import {
   CLIENT_MESSAGES,
   ClientMessage,
+  ForemanStatus,
   parseClientMessage,
   parseServerMessage,
   PROTOCOL_VERSION,
   SERVER_MESSAGES,
   ServerMessage,
+  Usage,
 } from '../src/protocol.js';
-import { CLIENT_EXAMPLES, SERVER_EXAMPLES } from '../src/protocol-examples.js';
+import { CLIENT_EXAMPLES, SERVER_EXAMPLES, USAGE_EXAMPLES } from '../src/protocol-examples.js';
 
 describe('protocol v1', () => {
   it('has an example for every message type', () => {
@@ -65,6 +67,21 @@ describe('protocol v1', () => {
     const r = parseClientMessage({ v: 1, type: 'hello', modVersion: '0.1', protocol: 1, futureField: 42 });
     expect(r.ok).toBe(true);
     if (r.ok) expect('futureField' in r.msg).toBe(false);
+  });
+
+  it('Usage: both example payloads parse, utilization stays within 0-100, a status without usage still parses', () => {
+    for (const ex of Object.values(USAGE_EXAMPLES)) expect(Usage.parse(ex)).toEqual(ex);
+    const sub = USAGE_EXAMPLES.subscription;
+    const w = sub.windows[0]!;
+    for (const utilization of [-1, 100.5]) {
+      expect(Usage.safeParse({ ...sub, windows: [{ ...w, utilization }] }).success).toBe(false);
+      expect(Usage.safeParse({ ...sub, extra: { enabled: true, usedCredits: 3.2, monthlyLimit: 20, utilization } }).success).toBe(false);
+    }
+    expect(Usage.safeParse({ ...sub, windows: [{ ...w, utilization: null, resetsAt: null }] }).success).toBe(true);
+    expect(Usage.safeParse({ ...USAGE_EXAMPLES.api, mode: 'team' }).success).toBe(false);
+    const status = { version: '0.1.0', backend: 'claude', auth: 'ok' };
+    expect(ForemanStatus.safeParse(status).success).toBe(true);
+    expect(ForemanStatus.parse({ ...status, usage: sub }).usage).toEqual(sub);
   });
 
   it('exposes protocol version 1', () => {

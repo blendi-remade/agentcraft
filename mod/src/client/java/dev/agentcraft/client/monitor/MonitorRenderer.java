@@ -201,6 +201,9 @@ public class MonitorRenderer extends StationRenderer<MonitorBlockEntity, Monitor
 		if (m.activity != null) {
 			WorldUi.submitText(ps, c, m.activity, m.activityX, m.activityY, st.muted(), light);
 		}
+		if (m.usage != null) {
+			WorldUi.submitText(ps, c, m.usage, m.cx0, m.usageY, st.muted(), light);
+		}
 		if (m.pill != null) {
 			WorldUi.submitText(ps, c, m.pill, m.pillX, hy, m.pillColor, light);
 		}
