@@ -209,8 +209,57 @@ public final class Protocol {
 		}
 	}
 
+	/**
+	 * One plan rate-limit window ({@code usage.windows[]}). {@code id} is a stable key ("session",
+	 * "weekly", "weekly:&lt;slug&gt;"); {@code label} is the Foreman's display name ("5h", "7d", "Fable").
+	 * Both are opaque: render the label, style by id prefix at most. A missing id or label is read as
+	 * "" so nothing downstream sees null; {@link Usage} drops such windows.
+	 */
+	public record UsageWindow(String id, String label, @Nullable Double utilization, @Nullable String resetsAt, @Nullable Boolean active) {
+		public UsageWindow {
+			id = id == null ? "" : id;
+			label = label == null ? "" : label;
+		}
+
+		/** True when the window has both an id and a label to render. */
+		public boolean isWellFormed() {
+			return !id.isBlank() && !label.isBlank();
+		}
+
+		public boolean isActive() {
+			return Boolean.TRUE.equals(active);
+		}
+	}
+
+	/** Extra-usage credits on a subscription ({@code usage.extra}). */
+	public record UsageExtra(boolean enabled, @Nullable Double usedCredits, @Nullable Double monthlyLimit, @Nullable Double utilization,
+		@Nullable String currency) {
+	}
+
+	/**
+	 * Spend / plan rate limits ({@code foreman.status.usage}, docs/design/usage-display.md). {@code mode}
+	 * is "api" or "subscription" and never null (a missing mode reads as "api"); anything else also
+	 * reads as api (show costUsd, no windows). Windows without an id or a label are dropped.
+	 */
+	public record Usage(String mode, @Nullable String plan, List<UsageWindow> windows, @Nullable UsageExtra extra, long fetchedAt,
+		@Nullable Boolean stale, @Nullable String error) {
+		public Usage {
+			mode = mode == null ? "api" : mode;
+			windows = windows == null ? List.of() : windows.stream().filter(w -> w != null && w.isWellFormed()).toList();
+		}
+
+		public boolean isSubscription() {
+			return "subscription".equals(mode);
+		}
+
+		public boolean isStale() {
+			return Boolean.TRUE.equals(stale);
+		}
+	}
+
 	public record ForemanStatus(String version, BackendName backend, AuthStatus auth, @Nullable String message, @Nullable String account,
-		@Nullable Double speed, @Nullable Boolean showcase, @Nullable Double costUsd, @Nullable String userName) {
+		@Nullable Double speed, @Nullable Boolean showcase, @Nullable Double costUsd, @Nullable String userName, @Nullable String authMode,
+		@Nullable Usage usage) {
 		public ForemanStatus {
 			version = version == null ? "?" : version;
 			backend = backend == null ? BackendName.UNKNOWN : backend;

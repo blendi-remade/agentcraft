@@ -41,6 +41,7 @@ import { fetchPulls, githubOrigin, prRefs, pullBriefs, type PullRequest } from '
 import type { AuthCheck, Engine, EngineId, PermissionGate, Role, TurnStats } from './engine.js';
 import { agentTools, type ToolHooks, type TurnHandle } from './tools.js';
 import { modelLabel } from './models.js';
+import { UsagePoller } from './usage.js';
 import { userName } from '../user.js';
 
 // policy: our own team tools are trusted (the Claude engine exposes them as this MCP server)
@@ -171,6 +172,8 @@ export class TeamBackend implements Backend {
   private readonly pullFetcher: PullFetcher;
   /** the model each agent's last turn really ran (shown on its nameplate) */
   private reportedModels = new Map<string, { engine: EngineId; label: string }>();
+  /** keeps foreman.status.usage fresh, for an engine that reports plan usage (see usage.ts) */
+  private usagePoller: UsagePoller | undefined;
 
   constructor(
     protected fm: Foreman,
@@ -269,8 +272,9 @@ export class TeamBackend implements Backend {
     const spent = Object.values(this.fm.store.data.sessions).reduce((sum, s) => sum + (s.costUsd || 0), 0);
     if (spent > 0) this.fm.setStatus({ costUsd: Math.round(spent * 1000) / 1000 });
     this.showEngines();
-    await this.checkAuth();
+    const authed = await this.checkAuth();
     this.showEngines(); // the auth check may have learned the configured model
+    if (authed) this.startUsagePoller();
     if (!this.cfg.resumeOnStart) {
       this.st.inflight = {};
     } else {
@@ -306,6 +310,30 @@ export class TeamBackend implements Backend {
     this.authFailed = false;
     this.fm.setStatus({ auth: 'ok', account: accounts.join(' · '), authMode: modes.join(' · '), message: this.teamLabel() });
     return true;
+  }
+
+  /**
+   * Plan usage for the in-game display, from the engine that reports it (Claude; Codex and the sim
+   * do not), unless --no-usage. One `usage` on the wire: a second such engine would need its window
+   * labels prefixed with the engine's, like `account`.
+   */
+  private startUsagePoller(): void {
+    if (!this.cfg.usagePoll || this.stopping) return;
+    const engine = this.enginesInUse().find((e) => e.usage);
+    if (!engine?.usage) return;
+    this.usagePoller ??= new UsagePoller({
+      poll: () => engine.usage!(),
+      publish: (usage) => this.fm.setStatus({ usage }),
+      busy: () => this.usageBusy(),
+      log: this.fm.log,
+    });
+    this.usagePoller.start();
+  }
+
+  /** The busy cadence: a turn of an engine that reports plan usage runs (a Codex turn spends no Claude plan). */
+  private usageBusy(): boolean {
+    for (const id of this.running.keys()) if (this.engineFor(id).usage) return true;
+    return false;
   }
 
   /** `authMode`: the auth mode that was attempted (the auth check); a failed turn keeps the current one */
@@ -405,6 +433,7 @@ export class TeamBackend implements Backend {
     this.stopping = true;
     if (this.tickTimer) clearTimeout(this.tickTimer);
     if (this.retryTimer) clearTimeout(this.retryTimer);
+    this.usagePoller?.stop();
     const turns = [...this.running.values()];
     for (const r of turns) this.abortTurn(r, 'shutdown');
     await Promise.race([Promise.allSettled([...this.turnPromises]), sleep(4000)]);
@@ -766,6 +795,7 @@ export class TeamBackend implements Backend {
     // (pump records this turn as lastTurn right after this synchronous part: this is the previous one)
     const previous = this.lastTurn.get(agentId);
     this.running.set(agentId, entry);
+    this.usagePoller?.reschedule(); // a turn runs: the busy cadence
     let stats: TurnStats | undefined;
     let cwd = '';
     try {
@@ -868,6 +898,8 @@ export class TeamBackend implements Backend {
     } else {
       await this.afterTurn(job, stats).catch((e) => this.fm.log.error(`afterTurn ${agentId}: ${(e as Error).stack ?? e}`));
     }
+    // the turn used some of the plan: fresh numbers (unless the poller is backing off)
+    this.usagePoller?.trigger();
     this.pump(agentId);
     // the user's messages that came after the agent's last tool call: answer them now
     if (reason !== 'stop' && reason !== 'pause') this.deliverPending(agentId);

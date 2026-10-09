@@ -15,6 +15,7 @@ import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol.Agent;
 import dev.agentcraft.client.foreman.Protocol.FeedKind;
 import dev.agentcraft.client.foreman.Protocol.Repo;
+import dev.agentcraft.client.foreman.UsageText;
 import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.ui.Kit;
@@ -737,7 +738,15 @@ public class ConsoleScreen extends Screen {
 			}
 		}
 		String repo = s.repos().size() == 1 ? s.repos().values().iterator().next().name() : s.repos().size() + " repos";
+		// plan windows replace the spend segment (a subscription bills nothing per token)
+		String usage = UsageText.summary(s, UsageText.HEADER_WINDOWS);
+		if (usage != null) {
+			return "· " + active + " on shift · " + repo + " · " + usage;
+		}
 		String spend = ConsoleActions.spendLabel(s);
+		if (spend != null && UsageText.isSubscription(s)) {
+			spend = "est. " + spend;
+		}
 		return "· " + active + " on shift · " + repo + (spend != null ? " · " + spend : "");
 	}
 
@@ -929,6 +938,7 @@ public class ConsoleScreen extends Screen {
 			switch (l.tone()) {
 				case HEADER -> header = true;
 				case OK -> bodyColor = UiBits.okText();
+				case WARN -> bodyColor = UiBits.warnText();
 				case ERROR -> bodyColor = UiBits.errorText();
 				case ECHO -> bodyColor = muted;
 				default -> {

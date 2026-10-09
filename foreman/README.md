@@ -97,6 +97,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--ci "<cmd>"` | detected (`npm test`, `cargo test`, ...) | run after each task |
 | `--lead-read-commands "<cmd>,..."` | none | read commands the lead runs without asking, by prefix: `"bd show,gh issue view"` lets it read your issue tracker |
 | `--no-lead-review` | | merge decisions go to you without a lead review turn |
+| `--no-usage` / config `claude.usagePoll: false` | on | no `foreman.status.usage` polling (with `--use-claude-login` each poll runs a `claude` process: every minute while Claude agents work, every 5 min idle) |
 | `--repo-poll-ms` | `10000` | how often checkouts are checked for head/dirty changes |
 | `--merge-style merge\|squash` / `AGENTCRAFT_MERGE_STYLE` | `merge` | approved merges: a merge commit that keeps the agents' commits, or one squashed commit (see Safety guarantees) |
 | `--no-sign-merges` / `AGENTCRAFT_SIGN_MERGES=0` | signed if your git config signs (claude) | never sign approved merge commits; the sim never signs |
@@ -325,7 +326,8 @@ spawns git with an empty environment); the policy refuses every command it can s
 `src/protocol.ts` (zod) is the source of truth; `docs/protocol.md` is generated from it with field
 tables and a JSON example per message (`npm run gen:protocol-doc`; `npm run check:protocol-doc`
 fails if it is stale). Highlights beyond the spec draft: `foreman.status` (backend/auth banner, with
-`authMode`: `claude login`, `API key`, a cloud provider name or the Codex equivalents),
+`authMode`: `claude login`, `API key`, a cloud provider name or the Codex equivalents, and
+`usage`: the spend mode plus, under the claude.ai login, the plan's rate-limit windows),
 `ack`/`error` replies for messages with an `id`, `snapshot.logs`/`snapshot.goals`,
 `Agent.active/paused/worktree/title`, task status `cancelled`, decision status `cancelled`.
 

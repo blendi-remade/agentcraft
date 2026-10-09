@@ -3,6 +3,7 @@
 // merges, steering, restarts - is the team's (team.ts) and the same for every engine, so a team
 // can mix them (e.g. a Claude lead with Codex workers).
 import type { ChildProcess } from 'node:child_process';
+import type { Usage } from '../protocol.js';
 import type { AgentTool, TurnHandle } from './tools.js';
 
 export type EngineId = 'claude' | 'codex';
@@ -73,4 +74,10 @@ export interface Engine {
   runTurn(spec: TurnSpec): Promise<TurnStats>;
   /** what to tell the user when a turn failed authentication */
   authFailedMessage(detail: string): string;
+  /**
+   * Spend mode and plan rate-limit windows for `foreman.status.usage` (the team polls it, see
+   * usage.ts). Optional: engines without it are never polled. Never throws: a failure is a
+   * returned `error`.
+   */
+  usage?(): Promise<Usage>;
 }

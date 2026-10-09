@@ -38,6 +38,8 @@ export interface ClaudeConfig {
   useClaudeLogin: boolean;
   /** command prefixes the lead runs without asking, e.g. `bd show` */
   leadReadCommands: string[];
+  /** poll the plan usage for the in-game display (claude.ai login: one `claude` process per poll) */
+  usagePoll: boolean;
 }
 
 export type EngineName = 'claude' | 'codex';
@@ -207,7 +209,7 @@ export const KNOWN_FLAGS = new Set([
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
   'ambient', 'lead-read-commands', 'lead-engine', 'worker-engine', 'engines', 'codex-path', 'codex-model', 'codex-lead-model',
-  'codex-worker-model', 'codex-effort', 'codex-lead-effort',
+  'codex-worker-model', 'codex-effort', 'codex-lead-effort', 'usage',
 ]);
 
 function engineName(v: unknown, d: EngineName, what: string): EngineName {
@@ -310,6 +312,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
       leadReadCommands: readCommands(flags['lead-read-commands'] ?? env.AGENTCRAFT_LEAD_READ_COMMANDS ?? fileClaude.leadReadCommands),
+      usagePoll: bool(flags.usage ?? fileClaude.usagePoll, true),
     },
     codex: {
       path: str(flags['codex-path']) ?? str(env.AGENTCRAFT_CODEX_PATH) ?? str(fileCodex.path),
@@ -384,6 +387,8 @@ usage: npm run start -- [options]
                            "bd show,gh issue view" (env AGENTCRAFT_LEAD_READ_COMMANDS)
   --no-lead-review         skip the lead's review turn before merge decisions
   --no-resume              do not resume interrupted sessions on start
+  --no-usage               do not poll the plan usage shown in-game (with --use-claude-login each
+                           poll runs a \`claude\` process; config.json claude.usagePoll)
 
  codex engine (--backend codex, or mixed teams)
   auth: your Codex login (\`codex login\`: ChatGPT or an OpenAI API key)

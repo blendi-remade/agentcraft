@@ -7,7 +7,7 @@
 - The Foreman listens on `ws://127.0.0.1:${AGENTCRAFT_PORT:-7878}`. Clients (the mod, CLI tools) connect, send `hello`, and receive a full `snapshot` followed by incremental messages. Multiple clients may be connected; every client receives every broadcast.
 - One JSON object per WebSocket **text** frame. Envelope: `{ "v": 1, "type": "<type>", "id"?: "<correlation id>", ...payload }`.
 - Client messages that carry an `id` are answered with `ack { re: id, ok, error?, result? }`. Invalid messages get `error` (and a failed `ack` if they had an id).
-- Timestamps are integer epoch milliseconds. Colors are `"#RRGGBB"`. Optional fields are omitted, never `null`. Receivers must ignore unknown fields.
+- Timestamps are integer epoch milliseconds. Colors are `"#RRGGBB"`. Optional fields are omitted, never `null` (only fields typed `| null`, in `Usage`, carry `null`). Receivers must ignore unknown fields.
 - Upserts replace the whole entity by id. `agent.log` and `feed.add` append.
 - Connections that carry any `Origin` header (browsers; also `Origin: null` from sandboxed iframes, `data:` and `file:` pages) or a Host header other than `127.0.0.1` / `localhost` / `[::1]` are rejected with HTTP 401, so a web page cannot drive your agents. Clients (the mod, CLI tools) must not send an Origin header. Heartbeat: the Foreman pings every 15 s.
 - The mod should reconnect with backoff and re-send `hello`; the snapshot rebuilds the whole view.
@@ -187,7 +187,40 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `speed` | number | no | sim: speed multiplier |
 | `showcase` | boolean | no | sim: holding a static showcase state (`--showcase` or `--showcase late`) |
 | `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
+| `usage` | [Usage](#usage) | no | claude: spend / plan rate limits; absent for sim, Codex-only teams and Foremans that predate it |
 | `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
+
+### <a id="usage"></a>Usage
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `mode` | `api` \| `subscription` | yes | api: costUsd is a real spend estimate; subscription: windows carry the story, costUsd is notional |
+| `plan` | string | no | subscription: "pro", "max", "team", "enterprise" as the CLI reports it |
+| `windows` | [UsageWindow](#usagewindow)[] | yes | display order; empty when nothing is known (api mode, or an error with no previous result) |
+| `extra` | [UsageExtra](#usageextra) | no | subscription: extra-usage credits, when enabled on the plan |
+| `fetchedAt` | integer | yes | when these numbers were obtained (ms since epoch, like every other Ts) |
+| `stale` | boolean | no | true when the last poll failed and windows are the previous good values |
+| `error` | string | no | why the last poll failed or why there is nothing to show; human-readable, never credential material |
+
+### <a id="usagewindow"></a>UsageWindow
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `id` | string | yes | stable key: "session", "weekly", "weekly:<slug>" (per-model or per-surface weekly window); see docs/design/usage-display.md |
+| `label` | string | yes | short display name chosen by the Foreman, e.g. "5h", "7d", "Fable"; free to change |
+| `utilization` | number \| null | yes | percent of the window used; null when the account does not report it |
+| `resetsAt` | string \| null | yes | ISO 8601 instant the window resets; null when unknown |
+| `active` | boolean | no | true when the server marks this window as the one currently binding |
+
+### <a id="usageextra"></a>UsageExtra
+
+| field | type | required | notes |
+| --- | --- | --- | --- |
+| `enabled` | boolean | yes |  |
+| `usedCredits` | number \| null | yes | extra-usage credits spent this month, in major units of `currency` (e.g. dollars, not cents) |
+| `monthlyLimit` | number \| null | yes | the monthly extra-usage cap, in the same major units; null when not reported |
+| `utilization` | number \| null | yes |  |
+| `currency` | string | no | ISO 4217, e.g. "USD" |
 
 ### <a id="agentlogs"></a>AgentLogs
 
@@ -259,7 +292,12 @@ Full state. Sent in reply to every `hello`; the mod rebuilds its view from it.
     "authMode": "API key",
     "account": "API key · fal",
     "message": "Claude (lead opus, workers sonnet)",
-    "costUsd": 0.42
+    "costUsd": 0.42,
+    "usage": {
+      "mode": "api",
+      "windows": [],
+      "fetchedAt": 1790850060000
+    }
   },
   "agents": [
     {
@@ -813,9 +851,45 @@ Backend/auth status changed (banner).
   "status": {
     "version": "0.1.0",
     "backend": "claude",
-    "auth": "failed",
+    "auth": "ok",
     "authMode": "claude login",
-    "message": "Claude login check failed: not logged in. Run `claude` and /login, then restart the Foreman."
+    "account": "Acme · max",
+    "message": "Claude (lead opus, workers sonnet)",
+    "costUsd": 1.94,
+    "usage": {
+      "mode": "subscription",
+      "plan": "max",
+      "windows": [
+        {
+          "id": "session",
+          "label": "5h",
+          "utilization": 62,
+          "resetsAt": "2026-10-01T13:20:00.063786+00:00",
+          "active": true
+        },
+        {
+          "id": "weekly",
+          "label": "7d",
+          "utilization": 34,
+          "resetsAt": "2026-10-05T20:00:00.063805+00:00",
+          "active": false
+        },
+        {
+          "id": "weekly:fable",
+          "label": "Fable",
+          "utilization": 43,
+          "resetsAt": "2026-10-05T20:00:00.063946+00:00",
+          "active": false
+        }
+      ],
+      "extra": {
+        "enabled": false,
+        "usedCredits": null,
+        "monthlyLimit": null,
+        "utilization": null
+      },
+      "fetchedAt": 1790850240000
+    }
   }
 }
 ```

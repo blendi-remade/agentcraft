@@ -206,6 +206,8 @@ public final class ForemanFeature {
 		o.addProperty("auth", fs == null ? null : fs.auth().wire());
 		o.addProperty("message", fs == null ? null : fs.message());
 		o.addProperty("version", fs == null ? null : fs.version());
+		o.addProperty("authMode", fs == null ? null : fs.authMode());
+		o.addProperty("usage", UsageText.summary(s, UsageText.HEADER_WINDOWS));
 		JsonObject counts = new JsonObject();
 		counts.addProperty("agents", s.agents().size());
 		counts.addProperty("activeAgents", s.agents().values().stream().filter(Protocol.Agent::isActive).count());

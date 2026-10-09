@@ -8,7 +8,7 @@
 //  - timestamps (`ts`, `createdAt`, `updated`, ...) are integer epoch milliseconds
 //  - colors are "#RRGGBB"
 //  - unknown fields must be ignored by receivers (forward compatibility); zod strips them here
-//  - optional fields are omitted (never null)
+//  - optional fields are omitted (never null); only fields declared .nullable() (in Usage) carry null
 import { z } from 'zod';
 
 export const PROTOCOL_VERSION = 1 as const;
@@ -211,6 +211,35 @@ export const FeedItem = z.object({
 });
 export type FeedItem = z.infer<typeof FeedItem>;
 
+export const UsageWindow = z.object({
+  id: z.string().describe('stable key: "session", "weekly", "weekly:<slug>" (per-model or per-surface weekly window); see docs/design/usage-display.md'),
+  label: z.string().describe('short display name chosen by the Foreman, e.g. "5h", "7d", "Fable"; free to change'),
+  utilization: z.number().min(0).max(100).nullable().describe('percent of the window used; null when the account does not report it'),
+  resetsAt: z.string().nullable().describe('ISO 8601 instant the window resets; null when unknown'),
+  active: z.boolean().optional().describe('true when the server marks this window as the one currently binding'),
+});
+export type UsageWindow = z.infer<typeof UsageWindow>;
+
+export const UsageExtra = z.object({
+  enabled: z.boolean(),
+  usedCredits: z.number().nullable().describe('extra-usage credits spent this month, in major units of `currency` (e.g. dollars, not cents)'),
+  monthlyLimit: z.number().nullable().describe('the monthly extra-usage cap, in the same major units; null when not reported'),
+  utilization: z.number().min(0).max(100).nullable(),
+  currency: z.string().optional().describe('ISO 4217, e.g. "USD"'),
+});
+export type UsageExtra = z.infer<typeof UsageExtra>;
+
+export const Usage = z.object({
+  mode: z.enum(['api', 'subscription']).describe('api: costUsd is a real spend estimate; subscription: windows carry the story, costUsd is notional'),
+  plan: z.string().optional().describe('subscription: "pro", "max", "team", "enterprise" as the CLI reports it'),
+  windows: z.array(UsageWindow).describe('display order; empty when nothing is known (api mode, or an error with no previous result)'),
+  extra: UsageExtra.optional().describe('subscription: extra-usage credits, when enabled on the plan'),
+  fetchedAt: Ts.describe('when these numbers were obtained (ms since epoch, like every other Ts)'),
+  stale: z.boolean().optional().describe('true when the last poll failed and windows are the previous good values'),
+  error: z.string().optional().describe('why the last poll failed or why there is nothing to show; human-readable, never credential material'),
+});
+export type Usage = z.infer<typeof Usage>;
+
 export const ForemanStatus = z.object({
   version: z.string(),
   backend: BackendName,
@@ -221,6 +250,7 @@ export const ForemanStatus = z.object({
   speed: z.number().optional().describe('sim: speed multiplier'),
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
+  usage: Usage.optional().describe('claude: spend / plan rate limits; absent for sim, Codex-only teams and Foremans that predate it'),
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
@@ -496,6 +526,9 @@ export const ENTITY_SCHEMAS = {
   Goal,
   FeedItem,
   ForemanStatus,
+  Usage,
+  UsageWindow,
+  UsageExtra,
   AgentLogs,
   DiffFile,
   DiffHunk,
