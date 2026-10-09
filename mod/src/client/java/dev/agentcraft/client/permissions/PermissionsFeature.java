@@ -13,7 +13,7 @@ import java.util.List;
  * Permission prompts. A permission decision (an agent's risky tool call, held until the user answers)
  * is shown by the decision screen with {@link PermissionBody}: the tool and exact command, the
  * Foreman's reason with a colour-coded risk chip ({@link PermissionInfo#classify}), the working
- * directory and what "Always allow for this agent" covers; buttons Allow once / Always allow /
+ * directory and what "Always allow for this team" covers; buttons Allow once / Always allow /
  * Deny (keys 1-3). Permission prompts go first in the queue (the agent is blocked mid-call), the HUD
  * rings the bell and shows a toast, and {@code J} opens it.
  *

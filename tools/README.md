@@ -70,7 +70,7 @@ If the game of this checkout is already running it is reused (one client per che
 
 | parameter | default | |
 | --- | --- | --- |
-| `-Backend sim\|claude` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
+| `-Backend sim\|claude\|codex\|openai` | `claude` (`AGENTCRAFT_BACKEND`) | `-Showcase` implies `sim` |
 | `-Repo <path>[,<path>]` | | registered at start, or sent as `repo.add` to a running Foreman |
 | `-Profile <name>` | backend name; `showcase` / `showcase-late` | state lives in `<home>/<profile>` |
 | `-Showcase [busy\|late]` | | hold a static scripted state (QA screenshots); always a fresh (`--reset`) profile |
@@ -122,3 +122,20 @@ Screenshot QA (scene format, anchor contract, judging): [docs/QA.md](../docs/QA.
 | `record.mjs`, `shots/*.json` | real-time shot player for screen recording (`dev.play`: camera paths, timed Foreman injections, typing); format in `shots/README.md` |
 | `qa.mjs`, `lib/contactsheet.mjs`, `scenes/qa.json` | QA suite, contact sheet (pngjs) |
 | `scenes/phase1.json`, `scenes/qa-selftest.json` | Phase 1 proof scene, runner self-test |
+
+
+Real backends also include `codex` and `openai`. Both launchers accept these backend names and use
+the matching state profile. Provider options can be supplied through `~/.agentcraft/config.json`,
+or forwarded to Foreman. Set `AGENTCRAFT_API_KEY` in your shell if the endpoint requires a key,
+then select it with `--api-key-env` to keep AgentCraft's credentials separate from other API tools:
+
+```sh
+node tools/unix.mjs launch --backend codex --repo /path/to/repo
+node tools/unix.mjs launch --backend openai --repo /path/to/repo \
+  --foreman-arg --model --foreman-arg your-model-id \
+  --foreman-arg --base-url --foreman-arg http://localhost:1234/v1 \
+  --foreman-arg --api-key-env --foreman-arg AGENTCRAFT_API_KEY
+```
+
+On Windows, use `-Backend codex` or `-Backend openai` and the existing `-ForemanArgs` array.
+See [provider setup](../foreman/README.md#providers).

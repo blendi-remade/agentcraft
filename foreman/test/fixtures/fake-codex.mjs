@@ -1,115 +1,152 @@
-// A scripted stand-in for `codex app-server` (tests). It speaks the JSON-RPC line protocol, plays
-// one scenario turn per `turn/start` (the first turn in $FAKE_CODEX_SCENARIO whose `match` regex
-// matches the prompt and whose `role` fits the thread), and appends every message it receives and
-// every answer it gets to $FAKE_CODEX_LOG (one JSON object per line).
-//
-// Steps: { cmd, foreign?, output? }  run a shell command (asks for approval; foreign: from another thread)
-//        { write: { file, content } } edit a file in the worktree (no approval: inside the sandbox)
-//        { editOutside: path }        an edit outside the sandbox (asks for file-change approval)
-//        { tool, args }               call a dynamic tool (the AgentCraft team tools)
-//        { say }                      final answer text
-//        { wait }                     sleep ms (to be interrupted)
+// Deterministic app-server double: real JSON-RPC pipes and real MCP, no model access.
 import fs from 'node:fs';
-import path from 'node:path';
-import readline from 'node:readline';
-
-const scenario = JSON.parse(fs.readFileSync(process.env.FAKE_CODEX_SCENARIO, 'utf8'));
-const logFile = process.env.FAKE_CODEX_LOG;
-const log = (o) => logFile && fs.appendFileSync(logFile, `${JSON.stringify({ pid: process.pid, ...o })}\n`);
-log({ serverLocalAppData: process.env.LOCALAPPDATA });
-let nextId = 1000;
-const pending = new Map();
-const send = (m) => process.stdout.write(`${JSON.stringify(m)}\n`);
-const notify = (method, params) => send({ method, params });
-const ask = (method, params) =>
-  new Promise((resolve) => {
-    const id = nextId++;
-    pending.set(id, resolve);
-    send({ id, method, params });
-  });
-const wrap = (cmd) => `"C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0\\powershell.exe" -Command '${cmd.replace(/'/g, "''")}'`;
-
-let thread = null;
-let role = 'worker';
-let cwd = process.cwd();
-let interrupted = false;
-
-async function play(params, turnId) {
-  const text = params.input?.[0]?.text ?? '';
-  const turn = scenario.turns.find((t) => (!t.role || t.role === role) && new RegExp(t.match).test(text)) ?? { steps: [] };
-  log({ playing: turn.match ?? '(none)', role });
-  for (const s of turn.steps) {
-    if (interrupted) break;
-    const itemId = `item-${nextId++}`;
-    if (s.cmd) {
-      const command = wrap(s.cmd);
-      notify('item/started', { threadId: thread, turnId, item: { type: 'commandExecution', id: itemId, command, cwd, status: 'inProgress', commandActions: [] } });
-      const r = await ask('item/commandExecution/requestApproval', { threadId: s.foreign ? 'th-somebody-else' : thread, turnId, itemId, kind: 'command', command, cwd, startedAtMs: Date.now(), environmentId: 'local' });
-      log({ cmd: s.cmd, foreign: !!s.foreign, decision: r.decision });
-      notify('item/completed', { threadId: thread, turnId, item: { type: 'commandExecution', id: itemId, command, cwd, status: r.decision === 'accept' ? 'completed' : 'declined', aggregatedOutput: s.output ?? '', exitCode: r.decision === 'accept' ? 0 : null } });
-    } else if (s.write) {
-      const file = path.join(cwd, s.write.file);
-      fs.appendFileSync(file, s.write.content);
-      const change = { path: file, kind: { type: 'update', move_path: null }, diff: `@@\n+${s.write.content.trim()}\n` };
-      notify('item/started', { threadId: thread, turnId, item: { type: 'fileChange', id: itemId, changes: [change], status: 'inProgress' } });
-      notify('item/completed', { threadId: thread, turnId, item: { type: 'fileChange', id: itemId, changes: [change], status: 'completed' } });
-    } else if (s.editOutside) {
-      const change = { path: s.editOutside, kind: { type: 'update', move_path: null }, diff: '@@\n+x\n' };
-      notify('item/started', { threadId: thread, turnId, item: { type: 'fileChange', id: itemId, changes: [change], status: 'inProgress' } });
-      const r = await ask('item/fileChange/requestApproval', { threadId: thread, turnId, itemId, startedAtMs: Date.now() });
-      log({ editOutside: s.editOutside, decision: r.decision });
-      notify('item/completed', { threadId: thread, turnId, item: { type: 'fileChange', id: itemId, changes: [change], status: r.decision === 'accept' ? 'completed' : 'declined' } });
-    } else if (s.tool) {
-      notify('item/started', { threadId: thread, turnId, item: { type: 'dynamicToolCall', id: itemId, tool: s.tool, arguments: s.args ?? {}, status: 'inProgress' } });
-      const r = await ask('item/tool/call', { threadId: thread, turnId, callId: itemId, namespace: null, tool: s.tool, arguments: s.args ?? {} });
-      log({ tool: s.tool, result: r });
-      notify('item/completed', { threadId: thread, turnId, item: { type: 'dynamicToolCall', id: itemId, tool: s.tool, arguments: s.args ?? {}, status: 'completed', contentItems: r.contentItems, success: r.success } });
-    } else if (s.say) {
-      notify('item/completed', { threadId: thread, turnId, item: { type: 'agentMessage', id: itemId, text: s.say, phase: 'final_answer' } });
-    } else if (s.wait) {
-      const t0 = Date.now();
-      while (!interrupted && Date.now() - t0 < s.wait) await new Promise((r) => setTimeout(r, 20));
-    }
-  }
-  notify('thread/tokenUsage/updated', { threadId: thread, turnId, tokenUsage: { last: { totalTokens: 1200 }, total: { totalTokens: 1200 }, modelContextWindow: null } });
-  notify('turn/completed', { threadId: thread, turn: { id: turnId, items: [], status: interrupted ? 'interrupted' : 'completed', error: null } });
+import { createInterface } from 'node:readline';
+import { setTimeout as delay } from 'node:timers/promises';
+import { Client } from '@modelcontextprotocol/sdk/client/index.js';
+import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
+if (process.argv.includes('login')) process.exit(process.env.AGENTCRAFT_TEST_NO_OPENAI_AUTH ? 1 : 0);
+if (process.argv.includes('--version') || process.argv.includes('--help')) process.exit(0);
+if (process.env.AGENTCRAFT_TEST_STARTUP_ERROR) {
+  process.stderr.write(`startup configuration rejected: ${process.env.AGENTCRAFT_TEST_STARTUP_ERROR}\n`);
+  process.exit(1);
 }
-
-readline.createInterface({ input: process.stdin }).on('line', async (line) => {
-  const m = JSON.parse(line);
-  if (m.method === undefined) {
-    pending.get(m.id)?.(m.result ?? { error: m.error });
-    pending.delete(m.id);
+const emit = data => process.stdout.write(JSON.stringify(data) + '\n');
+const notify = (method, params) => emit({ method, params });
+let threadId = '', turnId = '', config, cwd, instructions;
+let client;
+let active;
+let prompt = '';
+let completed = false;
+let nextServerId = 1000;
+const pendingServerRequests = new Map();
+const requestTool = params => new Promise(resolve => {
+  const id = nextServerId++; pendingServerRequests.set(id, resolve);
+  emit({ id, method: 'item/tool/call', params });
+});
+const trace = message => {
+  if (process.env.AGENTCRAFT_TEST_TRACE) fs.appendFileSync(process.env.AGENTCRAFT_TEST_TRACE, JSON.stringify(message) + '\n');
+};
+const finish = (status = 'completed', error = null) => {
+  if (completed) return;
+  completed = true;
+  notify('turn/completed', { threadId, turn: { id: turnId, status, error } });
+};
+const text = (value = 'Finished via AgentCraft MCP.') => {
+  notify('item/completed', { threadId, turnId, item: { id: 'msg-final', type: 'agentMessage', phase: 'final_answer', text: value } });
+};
+async function work() {
+  if (prompt.includes('[legacy-tool]')) {
+    const result = await requestTool({ threadId: prompt.includes('[foreign]') ? 'foreign' : threadId,
+      turnId: prompt.includes('[stale]') ? 'stale' : turnId, tool: prompt.includes('[unknown]') ? 'create_task' : 'legacy_probe',
+      arguments: prompt.includes('[bad-args]') ? {} : { value: 'current' }, namespace: null });
+    text(JSON.stringify(result)); finish(); return;
+  }
+  if (prompt.includes('[metadata]')) {
+    const usage = (total, last) => notify('thread/tokenUsage/updated', { threadId, turnId, tokenUsage: { total: { totalTokens: total }, last: { totalTokens: last } } });
+    usage(1100, 100); usage(1100, 100); usage(1300, 200);
+    text('Metadata reported.'); finish(); return;
+  }
+  if (prompt.includes('[split-secret]')) {
+    const key = process.env.AGENTCRAFT_TEST_PROVIDER_KEY;
+    const split = Math.floor(key.length / 2);
+    notify('item/agentMessage/delta', { threadId, turnId, itemId: 'msg-final', delta: `Credential: ${key.slice(0, split)}` });
+    await delay(600);
+    notify('item/agentMessage/delta', { threadId, turnId, itemId: 'msg-final', delta: `${key.slice(split)} hidden.` });
+    text(`Credential: ${key} hidden.`);
+    finish(); return;
+  }
+  if (prompt.includes('[hang]')) { await delay(60_000, undefined, { signal: active.signal }).catch(() => {}); return; }
+  if (prompt.includes('[steer]') || prompt.includes('[queued-steer]') || prompt.includes('[consumed-steer-hang]') || prompt.includes('[late-steer-ack]')) {
+    notify('item/agentMessage/delta', { threadId, turnId, itemId: 'msg-progress', delta: 'Working on the original task.' });
+    return; // finish after turn/steer, without waiting on a tool
+  }
+  if (prompt.includes('[malformed]')) { process.stdout.write('not JSON\n'); return; }
+  if (prompt.includes('[failure]')) { finish('failed', { message: 'test provider failed' }); return; }
+  if (prompt.includes('[policy-failure]')) { finish('failed', { message: `This content was flagged for possible cybersecurity risk. ${process.env.CODEX_API_KEY}` }); return; }
+  if (prompt.includes('[false-auth]')) { finish('failed', { message: 'Invalid schema additionalProperties key; requested 24010 tokens' }); return; }
+  if (prompt.includes('[auth-failure]')) { finish('failed', { message: 'HTTP 401 Unauthorized' }); return; }
+  if (prompt.includes('[recovered-auth-error]')) {
+    notify('error', { threadId, turnId, error: { message: 'HTTP 401 Unauthorized' }, willRetry: false });
+    text('Recovered successfully.'); finish(); return;
+  }
+  client = new Client({ name: 'fake-codex', version: '1.0' });
+  const url = config.mcp_servers.agentcraft.url;
+  await client.connect(new StreamableHTTPClientTransport(new URL(url), { requestInit: { headers: { Authorization: `Bearer ${process.env.AGENTCRAFT_MCP_TOKEN}` } } }));
+  const { tools } = await client.listTools();
+  if (prompt.includes('[hang-tool]') || prompt.includes('[hang-escaped-tool]')) {
+    const command = prompt.includes('[hang-escaped-tool]') ? 'node detach.cjs; echo started' : 'node -e "require(\'fs\').writeFileSync(\'shell-pid.txt\',String(process.pid));setTimeout(() => {}, 60000)"';
+    await client.callTool({ name: 'Bash', arguments: { command } }, undefined, { signal: active.signal }).catch(() => {});
     return;
   }
-  log({ method: m.method, params: m.params });
-  if (m.id === undefined) return;
-  const reply = (result) => send({ id: m.id, result });
-  switch (m.method) {
-    case 'initialize':
-      return reply({ userAgent: 'fake-codex', codexHome: '', platformFamily: process.platform, platformOs: process.platform });
-    case 'config/read':
-      return reply({ config: { model: 'gpt-fake', mcp_servers: { posthog: { url: 'https://example.invalid' } }, plugins: { 'computer-use@openai-bundled': { enabled: true } } } });
-    case 'account/read':
-      return reply(scenario.account ?? { account: { type: 'chatgpt', email: 'x@example.com', planType: 'plus' }, requiresOpenaiAuth: true });
-    case 'thread/start':
-    case 'thread/resume':
-      role = (m.params.dynamicTools ?? []).some((t) => t.name === 'create_task') ? 'lead' : 'worker';
-      cwd = m.params.cwd ?? cwd;
-      thread = m.method === 'thread/resume' ? m.params.threadId : `th-${role}-${process.pid}`;
-      return reply({ thread: { id: thread }, model: 'gpt-fake' });
-    case 'thread/name/set':
-      return reply({});
-    case 'turn/interrupt':
-      interrupted = true;
-      return reply({});
-    case 'turn/start': {
-      const turnId = `turn-${process.pid}`;
-      reply({ turn: { id: turnId, items: [], status: 'inProgress', error: null } });
-      await play(m.params, turnId);
-      return;
-    }
-    default:
-      send({ id: m.id, error: { code: -32601, message: `fake codex: unsupported ${m.method}` } });
+  if (prompt.includes('[ask]')) {
+    await client.callTool({ name: 'ask_user', arguments: { question: 'Continue?', options: ['Yes', 'No'] } }, undefined, { signal: active.signal });
+  } else if (prompt.includes('[env]')) {
+    if (!process.env.CODEX_API_KEY) throw new Error('CLI needs its provider key');
+    const result = await client.callTool({ name: 'Bash', arguments: { command: 'node -e "console.log(Boolean(process.env.CODEX_API_KEY), Boolean(process.env.OPENAI_API_KEY), Boolean(process.env.AGENTCRAFT_MCP_TOKEN), Boolean(process.env.AGENTCRAFT_TEST_PROVIDER_KEY))"' } });
+    if (!JSON.stringify(result).includes('false false false false')) throw new Error('provider credentials reached tool environment');
+  } else if (prompt.includes('[lead]')) {
+    if (tools.some(t => ['Write', 'Edit'].includes(t.name))) throw new Error('lead has write tools');
+  } else {
+    await client.callTool({ name: 'Write', arguments: { file_path: 'from-codex.txt', content: 'MCP write\n' } });
+    if (prompt.includes('[limit]')) await client.callTool({ name: 'Write', arguments: { file_path: 'over-limit.txt', content: 'must not run' } });
   }
-});
+  await client.close();
+  text();
+  if (prompt.includes('[no-complete]')) process.exit(0);
+  finish();
+}
+async function handle(message) {
+  trace(message);
+  const { id, method, params = {} } = message;
+  if (!method && pendingServerRequests.has(id)) { pendingServerRequests.get(id)(message.result ?? message.error); pendingServerRequests.delete(id); return; }
+  const reply = result => emit({ id, result });
+  switch (method) {
+    case 'initialize':
+      if (params.capabilities.experimentalApi) throw new Error('Experimental APIs must remain disabled');
+      reply({ userAgent: 'fake-codex/0.160.0' }); break;
+    case 'initialized': break;
+    case 'account/read': reply(process.env.AGENTCRAFT_TEST_NO_OPENAI_AUTH ? { account: null, requiresOpenaiAuth: false } : { account: { type: 'chatgpt', planType: 'plus' }, requiresOpenaiAuth: true }); break;
+    case 'config/read': reply({ config: { model: process.env.AGENTCRAFT_TEST_MODEL || 'gpt-configured', model_providers: { test: { env_key: 'AGENTCRAFT_TEST_PROVIDER_KEY' } } } }); break;
+    case 'thread/start':
+    case 'thread/resume': {
+      if ('dynamicTools' in params) throw new Error('Dynamic tools must not be sent');
+      threadId = params.threadId ?? 'test-codex-session';
+      cwd = params.cwd; config = params.config; instructions = params.developerInstructions;
+      const sandbox = params.sandbox === 'read-only' ? { type: 'readOnly', networkAccess: false }
+        : { type: 'workspaceWrite', networkAccess: false, writableRoots: [cwd], excludeTmpdirEnvVar: true, excludeSlashTmp: true };
+      reply({ model: params.model || process.env.AGENTCRAFT_TEST_MODEL || 'gpt-configured', thread: { id: threadId }, cwd, approvalPolicy: params.approvalPolicy, sandbox });
+      break;
+    }
+    case 'turn/start':
+      turnId = 'test-turn'; completed = false; active = new AbortController();
+      prompt = instructions + '\n' + params.input.map(item => item.text).join('\n');
+      reply({ turn: { id: turnId, status: 'inProgress' } });
+      notify('turn/started', { threadId, turn: { id: turnId, status: 'inProgress' } });
+      void work().catch(error => { if (!active.signal.aborted) finish('failed', { message: error.message }); });
+      break;
+    case 'turn/steer':
+      if (completed || params.expectedTurnId !== turnId || prompt.includes('[reject-steer]')) {
+        emit({ id, error: { code: -32600, message: 'No active matching turn' } });
+      } else {
+        if (prompt.includes('[queued-steer]')) {
+          reply({ turnId });
+          if (prompt.includes('[fail-after-steer]')) finish('failed', { message: 'provider failed after queueing' });
+          if (prompt.includes('[complete-after-steer]')) finish();
+          break;
+        }
+        if (!prompt.includes('[late-steer-ack]')) reply({ turnId });
+        notify('item/completed', { threadId, turnId, item: { type: 'userMessage', id: 'msg-steer', clientId: params.clientUserMessageId, content: params.input } });
+        if (prompt.includes('[consumed-steer-hang]')) break;
+        text('Accepted new instructions.');
+        finish();
+        if (prompt.includes('[late-steer-ack]')) { await delay(100); reply({ turnId }); }
+      }
+      break;
+    case 'turn/interrupt':
+      active?.abort(); reply({}); finish('interrupted'); break;
+    default: emit({ id, error: { code: -32601, message: `Unknown method ${method}` } });
+  }
+}
+const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
+input.on('line', line => { void handle(JSON.parse(line)).catch(error => { process.stderr.write(error.message); process.exit(1); }); });
+input.on('close', () => { active?.abort(); void Promise.resolve(client?.close()).finally(() => process.exit(0)); });

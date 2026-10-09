@@ -112,7 +112,8 @@ export class CodexEngine implements Engine {
   }
 
   model(role: Role): string {
-    return (role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel) ?? this.configuredModel ?? 'default';
+    const configured = role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
+    return configured && configured !== 'default' ? configured : this.configuredModel ?? 'default';
   }
 
   authFailedMessage(detail: string): string {
@@ -205,7 +206,7 @@ export class CodexEngine implements Engine {
       const userConfig = (await server.request<any>('config/read', { cwd }, 30_000).catch(() => undefined))?.config;
       if (typeof userConfig?.model === 'string') this.configuredModel ??= userConfig.model;
       const model = role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
-      const dynamicTools = spec.tools.map((t) => ({ type: 'function', name: t.name, description: t.description, inputSchema: z.toJSONSchema(z.object(t.shape)) }));
+      const dynamicTools = spec.tools.map((t) => ({ type: 'function', name: t.name, description: t.description, inputSchema: z.toJSONSchema(z.object(t.inputSchema)) }));
       const thread = {
         cwd,
         approvalPolicy: 'untrusted',
@@ -213,7 +214,7 @@ export class CodexEngine implements Engine {
         config: this.threadConfig(userConfig, spec, serverEnv),
         developerInstructions: spec.instructions + notes(role, spec.tools),
         dynamicTools,
-        ...(model ? { model } : {}),
+        ...(model && model !== 'default' ? { model } : {}),
       };
       let started: any;
       if (spec.resume) {
@@ -274,9 +275,9 @@ export class CodexEngine implements Engine {
         if (!ours) return reply('Not available in this thread.', false);
         const t = tools.get(String(params.tool));
         if (!t) return reply(`Unknown tool ${params.tool}. Available: ${[...tools.keys()].join(', ')}`, false);
-        const parsed = z.object(t.shape).safeParse(params.arguments ?? {});
+        const parsed = z.object(t.inputSchema).safeParse(params.arguments ?? {});
         if (!parsed.success) return reply(`Invalid arguments for ${t.name}: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ')}`, false);
-        const res = await t.handler(parsed.data);
+        const res = await t.handler(parsed.data, abort.signal);
         return reply(res.content.map((c) => c.text).join('\n'), !res.isError);
       }
       case 'item/tool/requestUserInput': {

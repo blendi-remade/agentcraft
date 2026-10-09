@@ -1,17 +1,26 @@
-// The AgentCraft team tools, shared by every engine (Claude: an in-process MCP server named
-// "agentcraft", see claude/tools.ts; Codex: app-server dynamic tools, see codex/engine.ts):
+// Provider-neutral team tools (Claude MCP or Codex/OpenAI tool calls):
 //   send_message, ask_user, write_memory, read_memory, update_task, report_status, list_tasks
 //   lead only: create_task, request_merge
 // Every tool result carries any unread messages for the agent (so mid-turn messages arrive).
+import { defineTool as tool, type AgentTool } from './runtime.js';
 import { z } from 'zod';
 import { formatInbox } from '../bus.js';
 import type { Foreman } from '../foreman.js';
 import type { AgentState, Decision, TaskStatus } from '../protocol.js';
 import { MERGE_OPTIONS } from '../protocol.js';
 import { isPrBranch } from '../pulls.js';
+export type { AgentTool } from './runtime.js';
 import { truncate } from '../util/text.js';
 import { boardSummary } from './prompts.js';
 import { userName } from '../user.js';
+
+export const MCP_SERVER = 'agentcraft';
+
+/** Names of the team tools for a role (unprefixed). */
+export const TOOL_NAMES = {
+  common: ['send_message', 'ask_user', 'write_memory', 'read_memory', 'update_task', 'report_status', 'list_tasks'],
+  lead: ['create_task', 'request_merge'],
+} as const;
 
 export interface ToolHooks {
   /** worker moved its task to review */
@@ -35,25 +44,6 @@ export interface TurnHandle {
 
 export type ToolResult = { content: Array<{ type: 'text'; text: string }>; isError?: boolean };
 
-/** One team tool: an engine exposes it under `name` with `shape` as its input schema. */
-export interface AgentTool {
-  name: string;
-  description: string;
-  shape: z.ZodRawShape;
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  handler(args: any): Promise<ToolResult>;
-}
-
-/** Names of the team tools for a role (unprefixed). */
-export const TOOL_NAMES = {
-  common: ['send_message', 'ask_user', 'write_memory', 'read_memory', 'update_task', 'report_status', 'list_tasks'],
-  lead: ['create_task', 'request_merge'],
-} as const;
-
-function tool<S extends z.ZodRawShape>(name: string, description: string, shape: S, handler: (args: z.infer<z.ZodObject<S>>) => Promise<ToolResult>): AgentTool {
-  return { name, description, shape, handler };
-}
-
 /**
  * A task in review whose worktree changed nothing (a report, an investigation): there is nothing
  * to merge, so it is closed as done (worktree abandoned, branch kept) instead of asking the user to
@@ -72,8 +62,11 @@ export async function closeIfNoChanges(fm: Foreman, taskId: string): Promise<boo
   return true;
 }
 
-/** The team tools for one agent's turn (lead: also create_task and request_merge). */
-export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker', hooks: ToolHooks, turn?: TurnHandle): AgentTool[] {
+export function toolNames(role: 'lead' | 'worker'): string[] {
+  return [...TOOL_NAMES.common, ...(role === 'lead' ? TOOL_NAMES.lead : [])].map((n) => `mcp__${MCP_SERVER}__${n}`);
+}
+
+export function buildTeamTools(fm: Foreman, agentId: string, role: 'lead' | 'worker', hooks: ToolHooks, turn?: TurnHandle): AgentTool[] {
   const withInbox = (text: string, isError = false): ToolResult => {
     const inbox = fm.bus.inbox(agentId, { markRead: true });
     const extra = inbox.length ? `\n\n[New messages]\n${formatInbox(inbox, (id) => fm.nameOf(id))}` : '';
@@ -115,7 +108,8 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
         options: z.array(z.string()).max(6).optional().describe('2-4 short choices, recommended first'),
         context: z.string().optional().describe('one or two lines of background'),
       },
-      async ({ question, options, context }) => {
+      async ({ question, options, context }, requestSignal) => {
+        const signal = requestSignal && turn ? AbortSignal.any([requestSignal, turn.signal]) : requestSignal ?? turn?.signal;
         const prev = fm.agent(agentId);
         // the stream mapper may already show the agent waiting at the user (it saw the tool call):
         // after the answer the agent goes back to thinking at its own station, not "waiting"
@@ -131,12 +125,20 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
         const onAbort = () => {
           if (turn?.reason() !== 'shutdown') fm.decisions.cancel(d.id, `${fm.nameOf(agentId)}'s turn was stopped`);
         };
-        if (turn?.signal.aborted) onAbort();
-        else turn?.signal.addEventListener('abort', onAbort, { once: true });
-        const done = await fm.decisions.wait(d.id);
-        turn?.signal.removeEventListener('abort', onAbort);
-        hooks.onWaiting(agentId, false);
-        if (turn?.signal.aborted) return withInbox(`Your turn was stopped before ${userName()} answered.`, true);
+        if (signal?.aborted) onAbort();
+        else signal?.addEventListener('abort', onAbort, { once: true });
+        let done: Decision;
+        try { done = await fm.decisions.wait(d.id, signal); }
+        catch (e) {
+          if (!signal?.aborted) throw e;
+          // Do not consume unread messages for a result the stopped model cannot receive.
+          return { content: [{ type: 'text', text: `Your turn was stopped before ${userName()} answered.` }], isError: true };
+        } finally {
+          signal?.removeEventListener('abort', onAbort);
+          hooks.onWaiting(agentId, false);
+          if (signal?.aborted && !turn?.signal.aborted) fm.setAgent(agentId, prevState);
+        }
+        if (signal?.aborted) return { content: [{ type: 'text', text: `Your request was stopped before ${userName()} answered.` }], isError: true };
         fm.setAgent(agentId, { state: prevState.state as AgentState, station: prevState.station, activity: 'got your answer' });
         if (done.status === 'cancelled') return withInbox('The question was cancelled. Use your best judgement and note the assumption.');
         const ans = [done.answer?.option, done.answer?.text].filter(Boolean).join(' — ');
@@ -312,7 +314,11 @@ export function agentTools(fm: Foreman, agentId: string, role: 'lead' | 'worker'
   // a stopped/aborted turn must not change anything any more, even if its CLI lingers
   for (const t of tools) {
     const inner = t.handler;
-    t.handler = async (args) => (turn?.signal.aborted ? fail('your turn was stopped; nothing was changed') : inner(args));
+    t.handler = async (args, context) => (turn?.signal.aborted ? fail('your turn was stopped; nothing was changed') : inner(args, context));
   }
+
   return tools;
 }
+
+/** Engine API compatibility; all providers share the same tools and validated handlers. */
+export const agentTools = buildTeamTools;

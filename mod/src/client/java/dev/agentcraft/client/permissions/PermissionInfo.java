@@ -11,10 +11,10 @@ import org.jspecify.annotations.Nullable;
 
 /**
  * A permission decision taken apart for display: which tool, the exact command or path, why the
- * Foreman asks (risk reason), the working directory, and what "Always allow for this agent"
+ * Foreman asks (risk reason), the working directory, and what "Always allow for this team"
  * would cover. Reads both context formats in use:
  * <pre>
- * claude backend: "&lt;reason&gt;\ncwd: &lt;dir&gt;\n\"Always allow for this agent\" covers: &lt;scope&gt;[\n&lt;title&gt;]"
+ * claude backend: "&lt;reason&gt;\ncwd: &lt;dir&gt;\n\"Always allow for this team\" covers: &lt;scope&gt;[\n&lt;title&gt;]"
  * sim backend:    "Bash: npm install chalk@5\ncwd: &lt;dir&gt;\nreason: &lt;reason&gt;"
  * </pre>
  * with the question "Kit wants to run Bash: npm test" / "Wren wants to run `npm install chalk@5` (...)".

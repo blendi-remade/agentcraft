@@ -69,6 +69,14 @@ export class MessageBus {
     if (changed) this.ctx.store.markDirty();
   }
 
+  /** Return a reserved message to the inbox if a live provider turn did not accept it. */
+  markUnread(agentId: string, ids: string[]): void {
+    for (const m of this.ctx.store.data.messages) {
+      if (ids.includes(m.id)) m.readBy = m.readBy.filter(id => id !== agentId);
+    }
+    this.ctx.store.markDirty();
+  }
+
   /** Recent conversation involving an agent (for prompts). */
   history(agentId: string, limit = 20): BusMessage[] {
     return this.ctx.store.data.messages

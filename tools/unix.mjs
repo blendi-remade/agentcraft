@@ -18,10 +18,11 @@ const saveJson = (file, value) => {
   fs.writeFileSync(file, JSON.stringify(value, null, 2) + '\n');
 };
 const runFile = (kind, profile) => path.join(runDir, `unix-${kind}-${profile}.json`);
+const resolveUserPath = (value) => path.resolve(value.replace(/^~(?=$|\/)/, () => os.homedir()));
 
 function usage(code = 0) {
   console.log(`AgentCraft launcher (macOS, Linux)
-  node tools/unix.mjs launch [--backend sim|claude|codex] [--repo PATH] [--use-claude-login]
+  node tools/unix.mjs launch [--backend sim|claude|codex|openai] [--repo PATH] [--use-claude-login]
                             [--home PATH] [--profile NAME] [--port N] [--dev-port N]
                             [--dev] [--showcase busy|late] [--reset]
                             [--no-game] [--no-foreman] [--no-wait]
@@ -44,8 +45,9 @@ function options(argv) {
     if (values.has(key)) {
       if (!argv[i + 1]) throw new Error(`--${key} needs a value`);
       const value = argv[++i];
-      if (key === 'repo') out.repo.push(path.resolve(value));
+      if (key === 'repo') out.repo.push(resolveUserPath(value));
       else if (key === 'foreman-arg') out.foremanArgs.push(value);
+      else if (key === 'summary-json') out[key] = resolveUserPath(value);
       else out[key] = value;
     } else if (switches.has(key)) out[key] = true;
     else throw new Error(`unknown option: --${key}`);
@@ -57,10 +59,10 @@ function options(argv) {
     out.backend = 'sim';
     out.profile ??= out.showcase === 'late' ? 'showcase-late' : 'showcase';
   }
-  if (!['sim', 'claude', 'codex'].includes(out.backend)) throw new Error('backend must be sim, claude or codex');
+  if (!['sim', 'claude', 'codex', 'openai'].includes(out.backend)) throw new Error('backend must be sim, claude, codex or openai');
   out.profile ??= out.backend;
   if (!/^[\w-]+$/.test(out.profile)) throw new Error('profile must contain only letters, digits, _ or -');
-  out.home = path.resolve(out.home ?? process.env.AGENTCRAFT_HOME ?? path.join(os.homedir(), '.agentcraft'));
+  out.home = resolveUserPath(out.home ?? process.env.AGENTCRAFT_HOME ?? path.join(os.homedir(), '.agentcraft'));
   out.port = Number(out.port ?? process.env.AGENTCRAFT_PORT ?? 7878);
   out['dev-port'] = Number(out['dev-port'] ?? process.env.AGENTCRAFT_DEV_PORT ?? 7879);
   for (const port of [out.port, out['dev-port']]) {

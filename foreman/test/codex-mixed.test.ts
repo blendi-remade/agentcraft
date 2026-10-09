@@ -10,7 +10,7 @@ import { TeamBackend } from '../src/agents/team.js';
 import { loadConfig } from '../src/config.js';
 import { demoRepo, makeForeman, rmrf, tempDir, until, type Harness } from './helpers.js';
 
-const FAKE = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), 'fixtures', 'fake-codex.mjs');
+const FAKE = path.join(path.dirname(new URL(import.meta.url).pathname.replace(/^\/(\w:)/, '$1')), 'fixtures', 'fake-codex-native.mjs');
 type ToolServer = { instance: { _registeredTools: Record<string, { handler: (a: unknown, e: unknown) => Promise<{ content: Array<{ text: string }> }> }> } };
 const callTool = async (o: Options, name: string, args: Record<string, unknown>) =>
   (await (o.mcpServers!.agentcraft as unknown as ToolServer).instance._registeredTools[name]!.handler(args, {})).content.map((c) => c.text).join('\n');
@@ -91,6 +91,6 @@ describe('engine config', () => {
     expect(load(['--codex-model', 'gpt-x', '--codex-lead-model', 'gpt-y', '--codex-effort', 'high']).codex).toMatchObject({ leadModel: 'gpt-y', workerModel: 'gpt-x', effort: 'high', leadEffort: 'high' });
     expect(() => load(['--worker-engine', 'gemini'])).toThrow(/unknown worker engine "gemini"/);
     expect(() => load(['--engines', 'kit'])).toThrow(/engine for kit/);
-    expect(() => load(['--backend', 'cursor'])).toThrow(/use sim, claude or codex/);
+    expect(() => load(['--backend', 'cursor'])).toThrow(/use sim, claude, codex or openai/);
   });
 });

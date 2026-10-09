@@ -464,3 +464,13 @@ describe('worktree .git tampering and a moved HEAD', () => {
     expect(await gitOut(wt.path, ['log', '-1', '--format=%s'])).toBe('agentcraft: normal');
   });
 });
+
+// Node 26 uses the spec reporter even when stdout is piped; Node 22 used TAP.
+describe('test output summaries', () => {
+  it('recognizes both TAP and Node spec summaries', async () => {
+    const { parseTestOutput } = await import('../src/repos.js');
+    for (const prefix of ['#', 'ℹ']) {
+      expect(parseTestOutput(`${prefix} tests 2\n${prefix} pass 1\n${prefix} fail 1\n`).summary).toBe('tests 2, pass 1, fail 1');
+    }
+  });
+});

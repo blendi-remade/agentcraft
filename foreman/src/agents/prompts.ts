@@ -1,4 +1,4 @@
-// System-prompt appendices and job prompts for the claude backend.
+// System-prompt appendices and job prompts shared by Claude, Codex and OpenAI-compatible backends.
 import type { Foreman } from '../foreman.js';
 import type { Goal, Task, Worktree } from '../protocol.js';
 import { truncate } from '../util/text.js';
@@ -34,6 +34,7 @@ Your branch started from the current local ${wt.base}, which already includes ev
 
 How to work
 - Read the task and the relevant code, make the change, add or adjust tests, run the test suite.
+- Each worktree has its own dependencies. If a test tool is missing, run the project's lockfile-based dependency install through Bash; the permission prompt handles any approval needed. Save substantial reproduction harnesses as files in your worktree so they are repeatable and can become regression tests.
 - Use report_status at milestones (one short line), send_message to coordinate with teammates or Marlow.
 - Decide technical details yourself. Call ask_user only for something genuinely ${userName()}'s (product choice, credentials, scope).
 - Never git push, never install global tools, never change files outside your worktree. Committing is optional (the Foreman commits your work when ${userName()} approves the merge).

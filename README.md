@@ -2,9 +2,9 @@
 
 # AgentCraft
 
-**A team of Claude agents doing real work on your code, inside a Minecraft studio you can walk around in.**
+**A team of AI coding agents doing real work on your code, inside a Minecraft studio you can walk around in.**
 
-*Powered by Claude*
+*Works with Claude, Codex, and OpenAI-compatible endpoints*
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-c9a227)](LICENSE)
 [![Minecraft 26.3](https://img.shields.io/badge/Minecraft-26.3-8fa98b)](https://www.minecraft.net)
@@ -168,13 +168,27 @@ AgentCraft is built to point at code you care about.
 **You need:** Windows 10 or 11, macOS, or Linux, Java 25, Node 22+, git, and a copy of
 Minecraft: Java Edition.
 
-**For the real agents** you need Claude API access, either of these:
+**For real agents**, choose Claude, Codex CLI, or an OpenAI-compatible API. Claude remains the default.
+
+For **Claude**, use either of these:
 
 - `ANTHROPIC_API_KEY`: create a key at [console.anthropic.com](https://console.anthropic.com), then
   `setx ANTHROPIC_API_KEY sk-ant-...` and open a new terminal.
 - A cloud provider supported by the Agent SDK: Amazon Bedrock (`CLAUDE_CODE_USE_BEDROCK=1`), Google
   Vertex AI (`CLAUDE_CODE_USE_VERTEX=1`) or Microsoft Foundry (`CLAUDE_CODE_USE_FOUNDRY=1`), with that
   provider's usual credentials.
+
+For **Codex**, install the current CLI (`npm install -g @openai/codex`) and run `codex login`,
+or supply `CODEX_API_KEY`. AgentCraft reuses CLI authentication and keeps its own tools and permissions.
+The CLI must support the stable app-server thread/turn API (verified with 0.160.0).
+AgentCraft disables inherited plugins, hooks, and MCP servers for its threads; its own MCP tools remain available.
+
+For **OpenAI-compatible endpoints**, pass `--base-url` with the API root (including `/v1` where
+needed) and `--model` with a tool-capable model ID. If your endpoint needs a key, set
+`AGENTCRAFT_API_KEY` and pass `--api-key-env AGENTCRAFT_API_KEY`. This keeps the key and endpoint
+configuration separate from other tools that use `OPENAI_*` environment variables.
+Use `--api responses` for a Responses endpoint; Chat Completions is the default. Compatibility requires
+function/tool calling, not just plain text completions. See [provider setup](foreman/README.md#providers).
 
 Then:
 
@@ -196,6 +210,15 @@ node tools/unix.mjs launch --backend sim                 # try the studio withou
 node tools/unix.mjs stop --profile sim
 node tools/unix.mjs launch --repo /path/to/your/repo --use-claude-login
 node tools/unix.mjs stop
+
+# Codex (your saved login; model defaults to the Codex CLI default)
+node tools/unix.mjs launch --backend codex --repo /path/to/your/repo
+
+# OpenAI-compatible server (set AGENTCRAFT_API_KEY in your shell if a key is required)
+node tools/unix.mjs launch --backend openai --repo /path/to/your/repo \
+  --foreman-arg --base-url --foreman-arg http://localhost:11434/v1 \
+  --foreman-arg --model --foreman-arg your-model-id \
+  --foreman-arg --api-key-env --foreman-arg AGENTCRAFT_API_KEY
 ```
 
 This launcher installs npm dependencies on first run, downloads Minecraft and Fabric
@@ -280,7 +303,7 @@ flowchart LR
 
 - **The Foreman** (`foreman/`) runs the agents and owns all the state: tasks and their
   dependencies, messages, shared memory, decisions and worktrees. Everything is saved to disk and
-  Claude sessions resume by id, so it survives restarts and crashes.
+  Claude and Codex sessions resume by id; API conversations are saved locally, so work survives restarts and crashes.
 - **The mod** (`mod/`) is the window and the controls. It draws what the Foreman knows and sends
   back what you decide. If the game closes, no work is lost.
 - **The sim backend** is a scripted team that exercises every feature with real git edits. It powers
@@ -310,7 +333,7 @@ flowchart LR
 
 ## Costs
 
-The claude backend bills per token to your Anthropic or cloud provider account. A small goal costs a
+Claude bills per token to your Anthropic or cloud provider account. A small goal costs a
 few dollars. For a cheaper team:
 
 ```powershell
@@ -320,8 +343,9 @@ tools\launch.ps1 -Repo C:\path\to\repo -ForemanArgs '--model','sonnet','--effort
 Measured with those settings on the sample repo: three two task goals, including two merge conflicts
 the workers resolved, took 2 to 10 minutes each and about $6 in total. The sim backend is free.
 
-Codex agents run on your Codex plan's usage (ChatGPT) or your OpenAI API key, whichever `codex login`
-uses. Their monitors show tokens per turn instead of dollars.
+Codex uses your configured CLI authentication; API endpoints follow their own pricing. AgentCraft
+shows dollar costs only when the provider reports them. `--max-budget` is Claude-only; all real
+backends support `--max-turns` (Codex counts tool calls). Codex monitors show token usage when reported.
 
 <br>
 

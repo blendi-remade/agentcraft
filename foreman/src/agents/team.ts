@@ -23,14 +23,17 @@ import type { ChildProcess } from 'node:child_process';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import type { ClaudeConfig } from '../config.js';
+import type { TeamConfig } from '../config.js';
+import type { AgentRuntime } from './runtime.js';
+import { AuthenticationError } from './runtime.js';
+import { RuntimeEngine } from './engine.js';
+import { TeamPermissions } from '../permissions.js';
 import { FOREMAN_VERSION } from '../config.js';
 import { ClientError, type Backend, type Foreman } from '../foreman.js';
 import { withGitSafety } from '../gitsafety.js';
 import { agentGitIdentity } from '../util/git.js';
-import { classifyToolUse, describeRuleKey, describeToolCall } from '../policy.js';
 import type { BackendName, Decision, Goal, Task } from '../protocol.js';
-import { MERGE_OPTIONS, PERMISSION_OPTIONS } from '../protocol.js';
+import { MERGE_OPTIONS } from '../protocol.js';
 import type { TestResult } from '../repos.js';
 import { renderDiffText } from '../diff.js';
 import { formatInbox } from '../bus.js';
@@ -42,9 +45,6 @@ import type { Engine, EngineId, PermissionGate, Role, TurnStats } from './engine
 import { agentTools, type ToolHooks, type TurnHandle } from './tools.js';
 import { modelLabel } from './models.js';
 import { userName } from '../user.js';
-
-// policy: our own team tools are trusted (the Claude engine exposes them as this MCP server)
-const TEAM_MCP_SERVER = 'agentcraft';
 
 type JobKind = 'plan' | 'work' | 'review' | 'followup';
 type AbortReason = 'pause' | 'stop' | 'shutdown' | 'cancel' | 'timeout';
@@ -72,11 +72,13 @@ interface Inflight {
   startedAt: number;
 }
 
-interface ClaudeState {
+interface TeamState {
   inflight: Record<string, Inflight>;
   ciFixes: Record<string, number>;
   /** agents the user stopped (off shift until resume/spawn) */
   stopped: string[];
+  /** Inbox messages reserved by live RPCs, returned to unread after a crash. */
+  steering?: Record<string, string[]>;
 }
 
 interface Running {
@@ -93,6 +95,8 @@ interface Running {
   tree?: Promise<ProcEntry[] | undefined>;
   /** the (single) clean-up of this turn's processes, once started */
   reaping?: Promise<void>;
+  steer?: (prompt: string) => Promise<boolean>;
+  steering?: Promise<void>;
 }
 
 const sleep = (ms: number) => new Promise<void>((r) => setTimeout(r, ms));
@@ -113,7 +117,7 @@ const LEAD = 'marlow';
  */
 export function agentEnv(base: NodeJS.ProcessEnv = process.env, who: { agentId?: string; cwd?: string } = {}): Record<string, string | undefined> {
   return withGitSafety(
-    base,
+    { ...base, YAMS_ALLOW_NET: '0' },
     {
       CLAUDE_AGENT_SDK_CLIENT_APP: `agentcraft-foreman/${FOREMAN_VERSION}`,
       CLAUDE_BASH_MAINTAIN_PROJECT_WORKING_DIR: '1',
@@ -169,16 +173,22 @@ export class TeamBackend implements Backend {
   private retryTimer: NodeJS.Timeout | undefined;
   private retryDelayMs = 2000;
   private readonly pullFetcher: PullFetcher;
+  private readonly permissions: TeamPermissions;
+  private readonly opts: TeamOptions;
   /** the model each agent's last turn really ran (shown on its nameplate) */
   private reportedModels = new Map<string, { engine: EngineId; label: string }>();
 
   constructor(
     protected fm: Foreman,
-    protected cfg: ClaudeConfig,
-    private opts: TeamOptions,
+    protected cfg: TeamConfig,
+    options: TeamOptions | AgentRuntime,
   ) {
+    const runtime = 'run' in options ? new RuntimeEngine(fm, cfg, options) : undefined;
+    const opts: TeamOptions = runtime ? { name: runtime.id, engines: { lead: runtime, worker: runtime } } : options as TeamOptions;
+    this.opts = opts;
     this.name = opts.name;
     this.pullFetcher = opts.pullFetcher ?? defaultPullFetcher;
+    this.permissions = new TeamPermissions(fm);
     this.hooks = {
       onReview: () => {
         /* handled after the worker's turn ends (CI then review) */
@@ -193,12 +203,20 @@ export class TeamBackend implements Backend {
     };
   }
 
-  private get st(): ClaudeState {
+  private get st(): TeamState {
     const b = this.fm.store.data.backend;
-    let s = b.claude as ClaudeState | undefined;
+    let s = b[this.name] as TeamState | undefined;
+    // Before provider-specific state, upstream teams (including Codex-only teams) persisted
+    // under `claude`. Move that state once; an existing PR Codex state takes precedence.
+    if (!s && this.name === 'codex' && b.claude) {
+      s = b.claude as TeamState;
+      b.codex = s;
+      delete b.claude;
+      this.fm.store.markDirty();
+    }
     if (!s) {
       s = { inflight: {}, ciFixes: {}, stopped: [] };
-      b.claude = s;
+      b[this.name] = s;
     }
     s.inflight ??= {};
     s.ciFixes ??= {};
@@ -259,6 +277,8 @@ export class TeamBackend implements Backend {
   // ---- lifecycle ----------------------------------------------------------------------------
 
   async start(): Promise<void> {
+    for (const [agentId, ids] of Object.entries(this.st.steering ?? {})) this.fm.bus.markUnread(agentId, ids);
+    delete this.st.steering;
     for (const a of this.fm.agents()) {
       const onTeam = (a.id === LEAD || this.team.includes(a.id)) && !this.isStopped(a.id);
       this.fm.setAgent(a.id, { active: onTeam });
@@ -333,7 +353,8 @@ export class TeamBackend implements Backend {
     // permission prompts from a dead process are moot; the resumed agent retries the tool
     for (const d of this.fm.decisions.open().filter((x) => x.kind === 'permission')) this.fm.decisions.cancel(d.id, 'Foreman restarted');
     for (const [agentId, inf] of Object.entries(st.inflight)) {
-      if (this.isStopped(agentId) || !this.fm.agent(agentId)) {
+      const task = inf.taskId ? this.fm.tasks.get(inf.taskId) : undefined;
+      if (this.isStopped(agentId) || !this.fm.agent(agentId) || (inf.taskId && (!task || task.status === 'cancelled'))) {
         delete st.inflight[agentId];
         continue;
       }
@@ -502,7 +523,7 @@ export class TeamBackend implements Backend {
   async submitGoal(goal: Goal): Promise<void> {
     if (this.authFailed) {
       this.fm.setGoal(goal.id, { status: 'failed' });
-      throw new ClientError(`Claude is not available: ${this.fm.status.message ?? 'auth failed'}`);
+      throw new ClientError(`Agent team is not available: ${this.fm.status.message ?? 'auth failed'}`);
     }
     const repo = this.fm.repos.require(goal.repoId!);
     if (this.isStopped(LEAD)) {
@@ -654,71 +675,24 @@ export class TeamBackend implements Backend {
     }
   }
 
-  private cwdFor(job: Job): { cwd: string; role: 'lead' | 'worker' } {
+  private cwdFor(job: Job): { cwd: string; role: 'lead' | 'worker'; repoId: string } {
     if (job.agentId === LEAD) {
       const goal = job.goalId ? this.fm.goal(job.goalId) : this.fm.currentGoal();
       const repo = goal?.repoId ? this.fm.repos.get(goal.repoId) : this.fm.repos.defaultRepo();
       if (!repo) throw new Error('no repo for the lead');
-      return { cwd: repo.path, role: 'lead' };
+      return { cwd: repo.path, role: 'lead', repoId: repo.id };
     }
     const t = job.taskId ? this.fm.tasks.get(job.taskId) : undefined;
     if (!t?.worktree || !t.repoId) throw new Error(`job for ${job.agentId} has no worktree`);
-    return { cwd: this.fm.repos.requireWorktree(t.repoId, t.worktree).path, role: 'worker' };
+    return { cwd: this.fm.repos.requireWorktree(t.repoId, t.worktree).path, role: 'worker', repoId: t.repoId };
   }
 
-  /** The policy, and the user for whatever it cannot allow by itself (a permission decision). */
-  private permissionGate(agentId: string, role: Role, cwd: string, turn: TurnHandle): PermissionGate {
-    return async (toolName, input, signal, title) => {
-      // a stopped/paused/cancelled turn runs nothing more, even if its CLI has not exited yet
-      if (turn.signal.aborted) return { allow: false, message: `Your turn was stopped by ${userName()}.`, interrupt: true };
-      const verdict = classifyToolUse(toolName, input, {
-        role,
-        cwd,
-        readDirs: [this.fm.memory.dir],
-        alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
-        mcpServer: TEAM_MCP_SERVER,
-        leadReadCommands: this.cfg.leadReadCommands,
-      });
-      if (verdict.action === 'allow') return { allow: true };
-      if (verdict.action === 'deny') {
-        this.fm.agentLog(agentId, 'error', `blocked: ${describeToolCall(toolName, input)} (${verdict.reason})`);
-        return { allow: false, message: verdict.reason };
-      }
-      const prev = this.fm.agent(agentId);
-      const prevState = prev ? { state: prev.state, station: prev.station, activity: prev.activity } : undefined;
-      const t = prev?.taskId;
-      const d = this.fm.createDecision({
-        agentId,
-        kind: 'permission',
-        tool: toolName,
-        question: `${this.fm.nameOf(agentId)} wants to run ${truncate(describeToolCall(toolName, input), 160)}`,
-        options: [...PERMISSION_OPTIONS],
-        context: `${verdict.reason}\ncwd: ${cwd}\n"${PERMISSION_OPTIONS[1]}" covers: ${[...new Set(verdict.ruleKeys.map(describeRuleKey))].join('; ')}${title ? `\n${title}` : ''}`,
-        ...(t ? { taskId: t } : {}),
-      });
-      this.fm.setAgent(agentId, { state: 'waiting_user', station: 'user', activity: 'asking permission' });
-      this.fm.agentLog(agentId, 'tool', `permission? ${describeToolCall(toolName, input)}`);
-      const onAbort = () => this.fm.decisions.cancel(d.id, 'turn stopped');
-      if (signal.aborted) onAbort();
-      else signal.addEventListener('abort', onAbort, { once: true });
-      const res = await this.fm.decisions.wait(d.id);
-      signal.removeEventListener('abort', onAbort);
-      if (signal.aborted) return { allow: false, message: 'The turn was stopped.' };
-      if (prevState) this.fm.setAgent(agentId, prevState);
-      const opt = res.answer?.option;
-      if (res.status === 'answered' && (opt === PERMISSION_OPTIONS[0] || opt === PERMISSION_OPTIONS[1])) {
-        if (opt === PERMISSION_OPTIONS[1]) {
-          // every key the call needed: each is scoped (see policy.ts), so this grants exactly
-          // what the prompt listed
-          const rules = (this.fm.store.data.permissionRules[agentId] ??= []);
-          for (const k of verdict.ruleKeys) if (!rules.includes(k)) rules.push(k);
-          this.fm.store.markDirty();
-        }
-        this.fm.agentLog(agentId, 'result', `${userName()} allowed: ${describeToolCall(toolName, input)}`);
-        return { allow: true };
-      }
-      this.fm.agentLog(agentId, 'error', `${res.status === 'cancelled' ? 'Permission request withdrawn' : `${userName()} denied`}: ${describeToolCall(toolName, input)}`);
-      return { allow: false, message: `${userName()} denied this${res.answer?.text ? `: ${res.answer.text}` : ''}. Find another way or ask_user.` };
+  /** Both native engines and provider runtimes share repository-scoped team permissions. */
+  private permissionGate(agentId: string, role: Role, cwd: string, repoId: string, turn: TurnHandle): PermissionGate {
+    const gate = this.permissions.canUseTool(agentId, role, cwd, repoId, turn, this.cfg.leadReadCommands);
+    return async (name, input, signal, title) => {
+      const result = await gate(name, input, { signal, ...(title ? { title } : {}) });
+      return result.behavior === 'allow' ? { allow: true } : { allow: false, message: result.message, ...(result.interrupt ? { interrupt: true } : {}) };
     };
   }
 
@@ -773,7 +747,7 @@ export class TeamBackend implements Backend {
       const engine = this.engineFor(agentId);
       const session = this.fm.store.data.sessions[job.sessionKey];
       // a session belongs to the engine that made it (records from before engines were Claude's)
-      const resume = !job.fresh && session?.sessionId && (session.engine ?? 'claude') === engine.id ? session.sessionId : undefined;
+      const resume = !job.fresh && session?.sessionId && (session.engine ?? session.provider ?? 'claude') === engine.id ? session.sessionId : undefined;
       this.st.inflight[agentId] = { kind: job.kind, sessionKey: job.sessionKey, startedAt: Date.now(), ...(job.taskId ? { taskId: job.taskId } : {}), ...(job.goalId ? { goalId: job.goalId } : {}) };
       this.fm.store.markDirty();
 
@@ -803,7 +777,7 @@ export class TeamBackend implements Backend {
           writableRoots: await this.writableRoots(role, job),
           abort,
           turn,
-          permission: this.permissionGate(agentId, role, cwd, turn),
+          permission: this.permissionGate(agentId, role, cwd, where.repoId, turn),
           tools: agentTools(this.fm, agentId, role, this.hooks, turn),
           // a stopped turn's whole process tree is ended before its worktree is handed on
           onProcess: (child) => {
@@ -812,6 +786,10 @@ export class TeamBackend implements Backend {
           },
           onSession: (id) => {
             if (this.fm.store.data.sessions[job.sessionKey]?.sessionId !== id) this.recordSession(job.sessionKey, id, model, engine.id);
+          },
+          onSteerReady: steer => {
+            entry.steer = steer;
+            this.steerPending(agentId, entry);
           },
           onModel: (m) => {
             const label = modelLabel(m);
@@ -831,10 +809,12 @@ export class TeamBackend implements Backend {
         const msg = (e as Error).message ?? String(e);
         this.fm.log.error(`${agentId} ${job.kind} failed: ${msg}`);
         this.fm.agentLog(agentId, 'error', `session error: ${truncate(msg, 400)}`);
-        if (/auth|login|credential|401/i.test(msg)) this.markAuthFailed(this.engineFor(agentId).authFailedMessage(truncate(msg, 160)));
+        if (e instanceof AuthenticationError) this.markAuthFailed(this.engineFor(agentId).authFailedMessage(truncate(msg, 160)));
         stats = { isError: true, errors: [msg] };
       }
     } finally {
+      // A failed live delivery must be back in the inbox before follow-up scheduling.
+      while (entry.steering) await entry.steering;
       this.running.delete(agentId);
     }
 
@@ -888,6 +868,7 @@ export class TeamBackend implements Backend {
     s.sessionId = sessionId;
     s.model = model;
     s.engine = engine;
+    s.provider = engine;
     s.updatedAt = Date.now();
     if (stats) {
       s.turns += stats.numTurns ?? 0;
@@ -907,7 +888,7 @@ export class TeamBackend implements Backend {
   // ---- after a turn -------------------------------------------------------------------------
 
   private failure(stats: TurnStats | undefined): string {
-    return truncate(stats?.subtype && stats.subtype !== 'success' ? stats.subtype.replace(/^error_/, '').replace(/_/g, ' ') : (stats?.errors[0] ?? 'error'), 36);
+    return truncate(stats?.errors[0] || stats?.subtype?.replace(/^error_/, '').replace(/_/g, ' ') || 'error', 36);
   }
 
   private async afterTurn(job: Job, stats: TurnStats | undefined): Promise<void> {
@@ -962,7 +943,8 @@ export class TeamBackend implements Backend {
         this.fm.tasks.setStatus(t.id, 'review', { summary: truncate(stats?.resultText ?? 'work complete', 400) });
         await this.afterWorkerDone(t.id);
       } else {
-        this.fm.tasks.setStatus(t.id, 'blocked', { reason: failed ? `session ended: ${stats?.subtype ?? stats?.errors.join('; ') ?? 'error'}` : 'worker stopped without changes', force: true });
+        const failure = [stats?.subtype ?? 'error', ...(stats?.errors ?? [])].join(': ');
+        this.fm.tasks.setStatus(t.id, 'blocked', { reason: failed ? `session ended: ${truncate(failure, 1200)}` : 'worker stopped without changes', force: true });
         // a failed turn is an error (red); a worker that gave up is blocked
         this.fm.setAgent(job.agentId, failed ? { state: 'error', station: 'desk', activity: `${t.id}: ${this.failure(stats)}` } : { state: 'blocked', station: 'desk', activity: `${t.id} blocked` });
         this.fm.bus.send(job.agentId, LEAD, `${t.id} is blocked: ${this.fm.tasks.get(t.id)?.blockedReason}`);
@@ -1055,6 +1037,25 @@ export class TeamBackend implements Backend {
 
   // ---- user intents -------------------------------------------------------------------------
 
+  private steerPending(agentId: string, entry: Running): void {
+    if (!entry.steer || entry.steering || entry.abort.signal.aborted || this.running.get(agentId) !== entry) return;
+    const messages = this.fm.bus.inbox(agentId).filter(m => m.from === 'user');
+    if (!messages.length) return;
+    const ids = messages.map(m => m.id);
+    // Reserve synchronously so an MCP result cannot deliver the same message during the RPC.
+    (this.st.steering ??= {})[agentId] = ids;
+    this.fm.bus.markRead(agentId, ids);
+    const prompt = `New instructions from ${userName()}:\n${formatInbox(messages, id => this.fm.nameOf(id))}\nAct on these instructions and respond briefly with send_message(to "user").`;
+    entry.steering = Promise.resolve().then(() => entry.steer!(prompt)).catch(() => false).then(accepted => {
+      if (!accepted) this.fm.bus.markUnread(agentId, ids);
+      else this.fm.agentLog(agentId, 'text', 'Your message was delivered to the running agent.');
+      delete this.st.steering?.[agentId];
+      this.fm.store.markDirty();
+      entry.steering = undefined;
+      if (accepted) this.steerPending(agentId, entry);
+    });
+  }
+
   /** `note`: extra instructions for the agent only (not shown in the feed). */
   onUserMessage(to: string, text: string, note?: string): void {
     const id = to === 'all' ? LEAD : to;
@@ -1065,9 +1066,11 @@ export class TeamBackend implements Backend {
       this.fm.bus.send(id, 'user', `(${this.fm.nameOf(id)} is off shift - /resume @${id} to bring them back; your message is queued.)`);
       return;
     }
-    // in a turn: delivered with its next agentcraft tool result, or right after the turn ends
-    // (deliverPending). Paused mid-turn: delivered with the resumed job's prompt.
-    if (this.running.has(id) || this.pausedJobs.has(id)) return;
+    // Runtimes with a live input channel accept messages immediately. Others retain the
+    // existing delivery through the next team tool result or a follow-up turn.
+    const running = this.running.get(id);
+    if (running) { this.steerPending(id, running); return; }
+    if (this.pausedJobs.has(id)) return;
     // every unread message from the user to this agent goes into one follow-up
     const mine = this.fm.bus.inbox(id).filter((m) => m.from === 'user' && (m.to === id || (to === 'all' && m.to === 'all')));
     const body = mine.length ? mine.map((m) => m.text).join('\n\n') : text;
@@ -1164,6 +1167,13 @@ export class TeamBackend implements Backend {
         if (r.job.taskId === task.id && id !== LEAD && (action === 'cancel' || task.assignee !== id)) this.abortTurn(r, 'cancel');
       }
       for (const [id, q] of this.queues) this.queues.set(id, q.filter((j) => j.taskId !== task.id || (action === 'reassign' && task.assignee === id)));
+      for (const [id, job] of this.pausedJobs) {
+        if (job.taskId === task.id && (action === 'cancel' || (id !== LEAD && task.assignee !== id))) this.pausedJobs.delete(id);
+      }
+      for (const [id, job] of Object.entries(this.st.inflight)) {
+        if (job.taskId === task.id && (action === 'cancel' || (id !== LEAD && task.assignee !== id))) delete this.st.inflight[id];
+      }
+      this.fm.store.markDirty();
       // reassigned: the new worker continues from the old worker's branch once that turn is over
       if (action === 'reassign' && task.repoId && task.worktree) {
         const wt = this.fm.repos.findWorktree(task.repoId, task.worktree);

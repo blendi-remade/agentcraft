@@ -61,10 +61,14 @@ describe('client intents', () => {
 
   it('task.action cancel / retry / prioritize / reassign', async () => {
     const t = h.fm.tasks.create({ title: 'steerable', createdBy: 'marlow', assignee: 'kit' });
+    h.fm.setAgent('kit', { active: true, state: 'error', station: 'desk', activity: 'turn failed', taskId: t.id, repoId: 'demo-app', worktree: 'kit-old' });
     const d = h.fm.createDecision({ agentId: 'kit', kind: 'question', question: 'still needed?', options: ['yes'], taskId: t.id });
     expect(ack(await send({ type: 'task.action', taskId: t.id, action: 'cancel' })).ok).toBe(true);
     expect(h.fm.tasks.get(t.id)!.status).toBe('cancelled');
     expect(h.fm.decisions.get(d.id)!.status).toBe('cancelled');
+    expect(h.fm.agent('kit')).toMatchObject({ active: true, state: 'idle', station: 'lounge', activity: 'task cancelled' });
+    expect(h.fm.agent('kit')!.taskId).toBeUndefined();
+    expect(h.fm.agent('kit')!.worktree).toBeUndefined();
     await send({ type: 'task.action', taskId: t.id, action: 'retry' });
     expect(h.fm.tasks.get(t.id)!.status).toBe('todo');
     await send({ type: 'task.action', taskId: t.id, action: 'prioritize' });

@@ -1,4 +1,4 @@
-// Foreman entry point: `npm run start -- --backend sim|claude|codex [--repo <path>] [--speed N] ...`
+// Foreman entry point: `npm run start -- --backend sim|claude|codex|openai [--repo <path>]`
 import fs from 'node:fs';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';

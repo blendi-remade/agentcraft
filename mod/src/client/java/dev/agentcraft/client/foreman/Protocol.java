@@ -87,7 +87,7 @@ public final class Protocol {
 	}
 
 	public enum BackendName implements Wire {
-		SIM, CLAUDE, CODEX, UNKNOWN
+		SIM, CLAUDE, CODEX, OPENAI, UNKNOWN
 	}
 
 	public enum AuthStatus implements Wire {
@@ -107,7 +107,7 @@ public final class Protocol {
 	public static final String REQUEST_CHANGES = "Request changes";
 	public static final String REJECT = "Reject";
 	public static final String ALLOW_ONCE = "Allow once";
-	public static final String ALWAYS_ALLOW = "Always allow for this agent";
+	public static final String ALWAYS_ALLOW = "Always allow for this team";
 	public static final String DENY = "Deny";
 
 	// ------------------------------------------------------------------ entities

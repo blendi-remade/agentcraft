@@ -147,15 +147,24 @@ export class DecisionQueue {
     for (const w of ws) w.resolve(d);
   }
 
-  /** Resolves once the decision is answered/cancelled and settled. */
-  wait(id: string): Promise<Decision> {
+  /** Resolves once settled. Abort detaches only this waiter, preserving the saved decision. */
+  wait(id: string, signal?: AbortSignal): Promise<Decision> {
     const d = this.get(id);
     if (!d) return Promise.reject(new DecisionError(`no decision ${id}`));
+    if (signal?.aborted) return Promise.reject(signal.reason);
     if (d.status !== 'open' && !this.unsettled.has(id)) return Promise.resolve(d);
-    return new Promise((resolve) => {
+    return new Promise((resolve, reject) => {
       const ws = this.waiters.get(id) ?? [];
-      ws.push({ resolve });
+      const onAbort = () => {
+        const remaining = (this.waiters.get(id) ?? []).filter(w => w !== waiter);
+        if (remaining.length) this.waiters.set(id, remaining);
+        else this.waiters.delete(id);
+        reject(signal!.reason);
+      };
+      const waiter = { resolve: (decision: Decision) => { signal?.removeEventListener('abort', onAbort); resolve(decision); } };
+      ws.push(waiter);
       this.waiters.set(id, ws);
+      signal?.addEventListener('abort', onAbort, { once: true });
     });
   }
 

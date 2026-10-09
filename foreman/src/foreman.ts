@@ -158,7 +158,20 @@ export class Foreman {
         a.role = c.role;
       }
     }
+    // Older sessions could leave a finished/failed worker attached to a cancelled task.
+    for (const a of agents) {
+      if (a.taskId && this.tasks.get(a.taskId)?.status === 'cancelled') this.releaseCancelledTask(a.taskId);
+    }
     this.store.markDirty();
+  }
+
+  private releaseCancelledTask(taskId: string): void {
+    for (const a of this.agents().filter(a => a.taskId === taskId)) {
+      this.setAgent(a.id, {
+        state: 'idle', station: a.role === 'lead' ? 'meeting' : 'lounge',
+        activity: a.paused ? 'paused' : 'task cancelled', taskId: null, worktree: null, repoId: null,
+      });
+    }
   }
 
   agents(): Agent[] {
@@ -576,6 +589,7 @@ export class Foreman {
       case 'cancel':
         this.tasks.setStatus(t.id, 'cancelled', { force: true });
         for (const d of this.decisions.open().filter((d) => d.taskId === t.id)) this.decisions.cancel(d.id, 'task cancelled');
+        this.releaseCancelledTask(t.id);
         this.bus.feed('task', `Task ${t.id} cancelled by ${userName()}: ${t.title}`, { agentId: 'user' });
         break;
       case 'retry':

@@ -1,6 +1,6 @@
 # AgentCraft Foreman
 
-The Foreman is the brain of AgentCraft: a Node 22 + TypeScript service that runs a team of Claude
+The Foreman is the brain of AgentCraft: a Node 22 + TypeScript service that runs a team of Claude, Codex, or OpenAI-compatible
 agents (one lead, up to five workers) on a real git repo and streams everything to the Minecraft
 mod over a WebSocket. The game is only a view. The Foreman owns all state, keeps working while
 Minecraft is closed, and survives restarts.
@@ -20,6 +20,8 @@ Minecraft is closed, and survives restarts.
      |- Notifier      src/notifier.ts    desktop notification + console bell when you are needed
      |- Store         src/store.ts       atomic JSON state + JSONL logs under AGENTCRAFT_HOME
      `- Backend       claude: src/agents/claude/  (Claude Agent SDK sessions)
+                      codex: src/agents/codex/  (Codex app-server + per-turn MCP bridge)
+                      openai: src/agents/openai/ (Chat Completions or Responses + tool loop)
                       sim:    src/agents/sim/     (deterministic scripted team, real git)
 ```
 
@@ -68,17 +70,155 @@ unattended (`/wait d3`, `/wait goal done`, `/wait 2` are available in scripts);
 Stop the Foreman with Ctrl+C (or `q` + Enter). State is saved continuously; a hard kill loses at
 most ~100 ms of state, and interrupted agent turns resume on the next start.
 
+## Providers
+
+Each backend has a separate default state profile (`claude`, `codex`, `openai`). Choose a distinct
+`--profile` when switching API endpoints or dialects: saved API conversations are bound to their
+endpoint, API, role, and worktree. All providers share planning, task scheduling, user questions,
+per-task worktrees, CI, reviews, approved merges, and pause/stop/restart handling.
+
+### Codex
+
+```sh
+npm install -g @openai/codex
+codex login
+npm run start -- --backend codex --repo /path/to/repo
+# Optional: select models explicitly
+npm run start -- --backend codex --repo /path/to/repo --lead-model your-lead-model --worker-model your-worker-model
+```
+
+`CODEX_API_KEY` can be supplied instead of a saved CLI login; configured providers that do not
+require OpenAI authentication are also accepted. `--codex-command` (or
+`AGENTCRAFT_CODEX_COMMAND`) selects a different executable. Without a model override the CLI chooses
+its configured default. The stable app-server thread/turn API is required (verified with 0.162.0);
+AgentCraft does not pin one exact CLI version or register new experimental dynamic tools.
+Existing upstream Codex sessions may retain their original team-tool names: on resume, only
+currently available team tools are accepted, through the same policy, call limit and cancellation
+queue as MCP. Their session IDs and conversation history are preserved.
+
+AgentCraft starts `codex app-server --listen stdio://` for each active job, with a native sandbox
+scoped to the worker's worktree (`workspace-write`; the lead is `read-only`) and an authenticated,
+temporary loopback MCP server. Native shell, additional agents, web search, plugins, and hooks are
+disabled. Inherited feature flags, MCP servers, and the legacy `notify` command are disabled for
+AgentCraft threads before they start.
+The MCP name `agentcraft` is reserved for Foreman. Repository operations run through AgentCraft's MCP coding tools and permission
+checks; the lead gets read tools only. The bridge closes when a turn finishes or stops. Codex session
+IDs are saved for explicit resume; `--max-turns` limits MCP tool calls per job. Provider API keys
+stay in the CLI environment and are removed from coding-command environments. This does not change
+your Codex settings or authentication files. Existing `codex exec` conversations can resume through
+app-server with a fresh bridge. ChatGPT login and configured model providers remain managed by Codex;
+`CODEX_API_KEY` selects an environment-backed OpenAI provider without changing the saved login.
+
+Messages to a running Codex agent use `turn/steer`. Delivery is confirmed when Codex consumes the
+message, not when it acknowledges queueing it. If the turn ends first, the message remains available
+for a team tool result or a follow-up turn. Resume requests omit returned history to support long
+conversations without exceeding the transport's message limit. Streamed assistant text
+appears on the monitor before turn completion. Stop/pause requests use `turn/interrupt`, revoke MCP
+access immediately, and drain pending permissions and commands before cleanup. App-server's sandbox
+does not sandbox Foreman's MCP shell commands; those retain AgentCraft's existing permission policy.
+
+### OpenAI-compatible API
+
+```sh
+# Any tool-capable Chat Completions endpoint, including unauthenticated local servers:
+npm run start -- --backend openai --repo /path/to/repo \
+  --base-url http://localhost:11434/v1 --model your-model-id \
+  --api-key-env AGENTCRAFT_API_KEY
+
+# OpenAI or another Responses-compatible service (set AGENTCRAFT_API_KEY in your shell):
+npm run start -- --backend openai --repo /path/to/repo \
+  --base-url https://api.openai.com/v1 --api responses --model your-model-id \
+  --api-key-env AGENTCRAFT_API_KEY
+```
+
+Pass the **API root**, not the full `/chat/completions` or `/responses` URL. Chat Completions is the
+default; `--api responses` (or `AGENTCRAFT_OPENAI_API=responses`) selects Responses. The endpoint and
+model must support function calls with JSON-schema parameters. Plain text-only endpoints cannot
+run an AgentCraft team. Provider-specific extensions or authentication beyond a bearer token may
+require a gateway that exposes this interface.
+
+Keys come only from environment variables: `OPENAI_API_KEY` by default, or the variable named by
+`--api-key-env`. Prefer `--api-key-env AGENTCRAFT_API_KEY` and explicit `--base-url` / `--model`
+flags to keep AgentCraft's settings separate from other tools using `OPENAI_*` variables.
+For a hidden key prompt in macOS's default zsh shell, run these lines before launching:
+
+```zsh
+read -rs 'AGENTCRAFT_API_KEY?Paste your AgentCraft API key: '
+echo
+export AGENTCRAFT_API_KEY
+```
+
+A key is optional for local/custom endpoints. AgentCraft does not save the configured
+key to profile state or pass it to coding-tool subprocesses. `--request-timeout` sets the per-request
+HTTP timeout in milliseconds (default 120000). Requests are cancelled when a turn stops.
+
+The tool loop supplies Read, Glob, literal-text Grep, and Bash, plus the team tools. Workers also
+receive Edit and Write; lead Bash commands must pass the read-only policy. Permissions use the same policy as Claude. Coding commands for Codex and API workers
+run in Bash with startup scripts disabled. On Windows, install Git for Windows; AgentCraft locates
+its Git Bash beside Git or in the standard installation directories. For a custom installation,
+set `AGENTCRAFT_BASH_COMMAND` to the absolute Bash executable path.
+
+Bash cleanup kills the command's process group and tracked descendants. A command that deliberately
+daemonizes and reparents before cleanup can escape that tracking. If an exited shell leaves output
+pipes open, cancellation closes those pipes and reports that a detached process may remain; inspect
+it before reusing the worktree.
+
+Conversation history is saved under
+`<home>/<profile>/openai-sessions/`; interrupted tool calls are recorded as uncertain so a restart
+checks state instead of automatically repeating edits or task creation. `--max-turns` limits model
+requests per job. Provider-specific reasoning/temperature options are not sent, for compatibility.
+Explicit context-limit errors shorten the conversation while preserving the original objective,
+current request, prior assistant notes, and a recent transcript excerpt, then instruct the agent
+to recheck the worktree, board, and memory. Conversations are retained until the endpoint reports
+that its context limit was reached.
+Responses requests preserve encrypted reasoning where supported; the optional include field is
+dropped only if the endpoint explicitly rejects it.
+
+### Configuration file
+
+`<AGENTCRAFT_HOME>/config.json` accepts separate `claude`, `codex`, and `openai` sections. Common
+team options use the selected provider's section. Flags override environment values, which override
+file settings. Model flags are `--model`, `--lead-model`, and `--worker-model`; environment model
+settings are `AGENTCRAFT_LEAD_MODEL`, `AGENTCRAFT_WORKER_MODEL`, and (for API defaults) `OPENAI_MODEL`.
+
+```json
+{
+  "backend": "openai",
+  "openai": {
+    "baseUrl": "http://localhost:1234/v1",
+    "api": "chat",
+    "apiKeyEnv": "AGENTCRAFT_API_KEY",
+    "leadModel": "your-model-id",
+    "workerModel": "your-model-id",
+    "workers": ["kit"],
+    "maxConcurrent": 1,
+    "maxTurnsLead": 40,
+    "maxTurnsWorker": 80,
+    "timeoutMs": 120000
+  }
+}
+```
+
+Dollar cost reporting and `--max-budget` are available only for Claude. Codex and compatible servers
+have different accounting; AgentCraft does not invent a USD estimate. The simulator still requires
+no model or credentials.
+
+Implementation references: [Codex app-server](https://learn.chatgpt.com/docs/app-server),
+[Codex configuration](https://learn.chatgpt.com/docs/config-file/config-reference), and
+[OpenAI function calling](https://developers.openai.com/api/docs/guides/function-calling).
+
 ## Options
 
 `npm run start -- --help` prints everything. The important ones:
 
 | flag / env | default | |
 | --- | --- | --- |
-| `--backend sim\|claude\|codex` / `AGENTCRAFT_BACKEND` | `claude` | codex: an all-Codex team |
-| `--lead-engine` / `--worker-engine` `claude\|codex` | the backend's | mixed teams, e.g. a Claude lead with Codex workers |
+| `--backend sim\|claude\|codex\|openai` / `AGENTCRAFT_BACKEND` | `claude` | codex: an all-Codex team; openai: an API team |
+| `--lead-engine` / `--worker-engine` `claude\|codex` | the backend's | mixed Claude/Codex teams |
 | `--engines kit=codex,...` / `AGENTCRAFT_ENGINES` | | engine per agent |
-| `--codex-model`, `--codex-lead-model`, `--codex-worker-model`, `--codex-effort` | your Codex config | Codex models and reasoning effort |
-| `--codex-path` / `AGENTCRAFT_CODEX_PATH` | `codex` on PATH, else the Codex app's | the Codex CLI |
+| `--codex-model`, `--codex-lead-model`, `--codex-worker-model` | your Codex config | Codex models, including in mixed teams |
+| `--codex-effort`, `--codex-lead-effort` | your Codex config | Codex reasoning effort |
+| `--codex-path` / `AGENTCRAFT_CODEX_PATH` | `codex` on PATH, else the Codex app's | alias of `--codex-command` / `AGENTCRAFT_CODEX_COMMAND` |
 | `--port` / `AGENTCRAFT_PORT` | `7878` | WebSocket port (127.0.0.1 only) |
 | `--home` / `AGENTCRAFT_HOME` | `~/.agentcraft` | state root |
 | `--user-name` / `AGENTCRAFT_USER_NAME` / config `userName` | OS user name | how the agents address you; sent to the mod in `foreman.status` |
@@ -86,9 +226,9 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--repo <path>[,<path>]` | | register repos at start (sim: a fresh `sandbox/sim-demo`) |
 | `--goal "<text>"` | | submit a goal right away |
 | `--reset` | | wipe this profile first |
-| `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for claude, off for sim | Windows, macOS or Linux (`notify-send`) notifications |
+| `--notify` / `--no-notify` / `AGENTCRAFT_NOTIFY` | on for real agents, off for sim | Windows, macOS or Linux (`notify-send`) notifications |
 | `--toast-silent` | | toast without sound |
-| `--model`, `--lead-model`, `--worker-model` | lead `opus`, workers `sonnet` | any model id/alias the CLI accepts |
+| `--model`, `--lead-model`, `--worker-model` | Claude: `opus`/`sonnet`; Codex: CLI default; API: required | model id or alias for the selected provider |
 | `--effort low..max` | `medium` | |
 | `--workers 3` or `--workers kit,wren` | `juniper,kit,wren` | team (others stay "off shift") |
 | `--max-concurrent` | `3` | workers running at once |
@@ -98,7 +238,7 @@ most ~100 ms of state, and interrupted agent turns resume on the next start.
 | `--no-lead-review` | | merge decisions go to you without a lead review turn |
 | `--repo-poll-ms` | `10000` | how often checkouts are checked for head/dirty changes |
 | `--merge-style merge\|squash` / `AGENTCRAFT_MERGE_STYLE` | `merge` | approved merges: a merge commit that keeps the agents' commits, or one squashed commit (see Safety guarantees) |
-| `--no-sign-merges` / `AGENTCRAFT_SIGN_MERGES=0` | signed if your git config signs (claude) | never sign approved merge commits; the sim never signs |
+| `--no-sign-merges` / `AGENTCRAFT_SIGN_MERGES=0` | signed if your git config signs (real backends) | never sign approved merge commits; the sim never signs |
 | sim: `--speed`, `--seed`, `--autostart`, `--showcase [late]`, `--auto-answer`, `--no-ambient` | | |
 
 `<home>/config.json` can hold the same settings (`{"backend":"claude","claude":{"workers":["kit","wren"]}}`).
@@ -107,45 +247,27 @@ so launch scripts can find it; `<home>/foreman.json` holds the same for the firs
 it exits, another live profile takes its place). A second Foreman on a profile that is already
 running is refused (two would both write its `state.json`).
 
-## Engines: Claude and Codex
+## Engines and mixed teams
 
-The team (`src/agents/team.ts`: task graph, worktrees, scheduling, CI, reviews, merges, steering,
-restarts) runs each agent turn through an engine, chosen per agent:
+The shared team (`src/agents/team.ts`) chooses an engine per agent. Production engines adapt the
+Claude, Codex, and OpenAI runtimes through `RuntimeEngine`, keeping the same scheduling, tools,
+permissions, reviews and merges. Claude and Codex may be mixed using `--lead-engine`,
+`--worker-engine`, and `--engines kit=codex,wren=claude`. The OpenAI backend uses its configured
+endpoint for the whole team. Sessions retain their provider, so switching an agent's engine
+starts a compatible session. Model badges show the configured model, then the actual model
+reported by the provider.
 
-- **Claude** (`src/agents/claude/engine.ts`): one Claude Agent SDK `query()` per turn; the team tools
-  are an in-process MCP server; every tool call goes through `canUseTool` and the policy.
-- **Codex** (`src/agents/codex/`): one `codex app-server` process per turn, JSON-RPC over stdio. The
-  agent's thread is durable, so its next turn resumes it. Commands run with `approvalPolicy:
-  "untrusted"`, so Codex asks before each one, and the ask goes through the same policy and in-game
-  permission prompts (commands are unwrapped from Codex's `powershell -Command` / `bash -lc` wrapper
-  first). Workers are sandboxed to their worktree, its git dir and the temp dir; the lead is
-  read-only. The team tools are app-server dynamic tools. None of your own Codex setup reaches an
-  agent thread: your MCP servers, plugins, apps, web search, image generation and notify hooks are
-  switched off for it (your Codex app is untouched). Codex's own sub-agent tools cannot be switched
-  off; agents are told not to use them, and every approval from a thread AgentCraft did not start is
-  declined. The git safety environment is passed explicitly (`shell_environment_policy.set`), since
-  Codex drops variables named like secrets (`GIT_CONFIG_KEY_0`).
+Generic model and effort flags select the backend’s provider. With a Claude backend, use
+`--codex-model` / `--codex-effort` for Codex agents in mixed teams. With a Codex backend, a
+Claude agent uses its `claude` configuration section. Codex-specific
+model flags take precedence. Team settings in the `codex` section override the shared `claude`
+settings for Codex profiles; API profiles use their own `openai` section.
 
-  On Windows, the app-server uses `<home>/<profile>/codex-localappdata` as its own local app-data
-  directory. This avoids a Codex sandbox setup bug that tries to repair permissions on locked
-  desktop runtime executables. Agent shell commands retain the original `LOCALAPPDATA`; the
-  sandbox, approval policy, login and saved Codex threads are unchanged.
+On Windows, the Codex app-server uses `<home>/<profile>/codex-localappdata` as its own local
+app-data directory to avoid sandbox setup failures on locked desktop runtime executables.
+Coding tools retain the original environment and run through Foreman's permission policy.
 
-  A worker's sandbox can write exactly what committing and merging on its own branch needs: the
-  shared `objects/`, its own branches' refs and reflogs (`refs/heads/agentcraft/<agent>/`), and its
-  worktree's own git dir (Codex protects the `.git` pointer's target unless it is granted exactly),
-  validated against the registered repository before every turn. Never the shared `.git` as a
-  whole: its `config` and `hooks` would let a worker run code in your own git, outside any sandbox,
-  and its refs would let it move your branches. On Windows,
-  worktrees run with the older grant may retain Codex deny ACLs; recreating the worktree after
-  saving its changes clears those stale permissions. Do not reset permissions on the whole repo.
-  Windows agents are also told to use `npm.cmd` / `npx.cmd`: their PowerShell launchers can fail
-  on sandbox-inaccessible global installs or script execution policy, while the CMD launchers work.
-
-The rest of this section describes the team with either engine ("Read/Grep/Glob" is how a Codex
-agent reads with its shell).
-
-## How the claude backend works
+## How real-agent backends work
 
 1. **Plan** (lead, read-only in your checkout): explores with Read/Grep/Glob, writes `Plan: ...` to
    shared memory, creates tasks with deps and assignees via `create_task`, may `ask_user`.
@@ -168,11 +290,12 @@ rejected becomes `cancelled` (it is active again if the lead adds a task to it).
 Agent tools (in-process MCP server `agentcraft`): `send_message`, `ask_user` (blocks until you
 answer), `write_memory`, `read_memory`, `update_task`, `report_status`, `list_tasks`, and for the
 lead `create_task`, `request_merge`. Unread messages ride along on every tool result and on the
-prompt of the agent's next turn. A message from you that arrives after an agent's last tool call
+prompt of the agent's next turn. Codex also receives your messages through its active turn's live
+input channel. For runtimes without live input, a message that arrives after an agent's last tool call
 (e.g. while it writes its final summary) starts a follow-up turn as soon as that turn ends; one
 sent to an off-shift agent is delivered when you `/resume` it.
 
-The CLI process of every agent turn is spawned by the Foreman (the SDK's
+The CLI process of each Claude or Codex turn is spawned by the Foreman (Claude uses the SDK's
 `spawnClaudeCodeProcess`), so the Foreman knows its pid: an aborted turn (stop, pause, cancel,
 timeout, Foreman shutdown) is closed, and its CLI and every process it started are killed if they
 are still there a few seconds later (a process tree snapshot taken at abort time, plus a second
@@ -180,7 +303,7 @@ look after the CLI exited, also finds orphans the CLI left behind; a pid is only
 creation time still matches, and never if the CLI's pid was reused). The next turn of that agent
 (e.g. after `/pause` + `/resume`) waits for this clean-up, so two CLIs never share a session.
 
-SDK stream -> world: Read/Grep/Glob -> `reading@library`, Edit/Write -> `editing@desk`, test
+Provider events -> world: Read/Grep/Glob -> `reading@library`, Edit/Write -> `editing@desk`, test
 commands -> `testing@testbench`, other Bash -> `running@terminal`, `ask_user` -> `waiting_user@user`.
 
 Sessions are persisted per (agent, task) and per (lead, goal). On restart, interrupted turns resume
@@ -210,8 +333,8 @@ the reason; `/task t3 retry` puts it back on the board.
 
 | | |
 | --- | --- |
-| allowed | reads/edits inside the agent's worktree; safe dev commands (`npm test`, `node src/x.ts`, `git status/diff/add/commit/merge`, `ls`, `grep`, ...); `npx <tool>` for dev tools the worktree has installed (`node_modules/.bin`); scratch files in the OS temp dir |
-| asks you (permission decision) | anything outside the worktree (absolute paths, `..`, `~`, `$HOME`, `%USERPROFILE%`, brace expansion like `{~,x}`, `cd` out of the worktree, redirections like `>C:/x`, paths from `$VARS` or `$(...)`, links that lead out, Glob patterns like `../../x/*`), network (`curl`, `npm install`/`view`/`outdated`, `npx` of a tool that is not installed, WebFetch, `git fetch`), dev servers (`vite`, `webpack serve`), git commands that change the repo shared with your checkout (`git config` writes, `git branch -f/-D/<new>`, `git tag`, `git stash`, `git update-ref`, `git checkout <branch>`, `git rebase <upstream> <other-branch>`, `--update-refs`, `--ignore-other-worktrees`, `git submodule update`, `filter-branch`), git pointed at another repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, ... in any form: prefix, `export`, `env`, `read`, `for`; `--git-dir`; git run after `cd`/`-C` out of the worktree), writing, moving or deleting a `.git` entry inside the worktree (its link to the repository), destructive commands (`rm -r`, `find -delete`, `git reset --hard`, `git clean`, `xargs rm`), env vars that make commands run code (`GIT_PAGER=...`, `NODE_OPTIONS=...`, `git -c core.pager=...`), inline code that writes/spawns/uses the network (`node -e`, `python -c`), process/system commands (`taskkill`, `reg`, `sudo`), GUIs and the browser (`git citool`, `git gui`, `git <sub> --help` on Windows), unknown binaries |
+| allowed | reads/edits inside the agent's worktree; reads of installed skills in `~/.agents/skills` and `$CODEX_HOME/skills` (default `~/.codex/skills`), including installed skill aliases; local Yams queries/indexing; safe dev commands (`npm test`, `node src/x.ts`, `git status/diff/add/commit/merge`, `ls`, `grep`, ...); `npx <tool>` and `npm exec -- <tool>` for dev tools the worktree has installed (`node_modules/.bin`), or with `--offline`/`--no-install`; Playwright test runs; scratch files in the OS temp dir |
+| asks you (permission decision) | paths outside the worktree and trusted read directories (absolute paths, `..`, `~`, `$HOME`, `%USERPROFILE%`, brace expansion like `{~,x}`, `cd` out of the worktree, redirections like `>C:/x`, paths from `$VARS` or `$(...)`, links that lead out, Glob patterns like `../../x/*`), network (`curl`, `npm install`/`view`/`outdated`, `npx` of a tool that is not installed, WebFetch, `git fetch`), dev servers (`vite`, `webpack serve`), git commands that change the repo shared with your checkout (`git config` writes, `git branch -f/-D/<new>`, `git tag`, `git stash`, `git update-ref`, `git checkout <branch>`, `git rebase <upstream> <other-branch>`, `--update-refs`, `--ignore-other-worktrees`, `git submodule update`, `filter-branch`), git pointed at another repository (`GIT_DIR`, `GIT_WORK_TREE`, `GIT_INDEX_FILE`, `GIT_COMMON_DIR`, ... in any form: prefix, `export`, `env`, `read`, `for`; `--git-dir`; git run after `cd`/`-C` out of the worktree), writing, moving or deleting a `.git` entry inside the worktree (its link to the repository), destructive commands (`rm -r`, `find -delete`, `git reset --hard`, `git clean`, `xargs rm`), env vars that make commands run code (`GIT_PAGER=...`, `NODE_OPTIONS=...`, `git -c core.pager=...`), inline code that writes/spawns/uses the network (`node -e`, `python -c`), process/system commands (`taskkill`, `reg`, `sudo`), GUIs and the browser (`git citool`, `git gui`, `git <sub> --help` on Windows), unknown binaries |
 | always denied | `git push` however it is spelled, wrapped or hidden, when the policy can see it: `env`/`xargs`/`timeout`/`sudo`/`bash -c`/`cmd /c`/`eval`, inside `$(...)`, backticks or `<(...)`, `find -exec`, commands git runs for us (`rebase -x`, `bisect run`, `submodule foreach`, `filter-branch --tree-filter`, `difftool -x`), `echo "git push" \| bash`, here-docs/strings fed to a shell, `node -e "...execSync('git push')"`, a git subcommand from a variable or substitution (`git $x`), `git -c alias.p=push`, `git lfs push`, `git subtree push`; signing with your key (`git commit -S`, `git tag -s`, `-c commit.gpgsign=true`); changing or clearing the git safety variables (`env -i`, `GIT_CEILING_DIRECTORIES`); file edits by the lead; subagents. Where the policy cannot see a push (a test script, a node script), git itself refuses it (below). |
 
 The Bash classifier is a small shell parser (quotes, redirections, heredocs and here-strings,
@@ -229,9 +352,12 @@ or `git diff --output=x` is a write). Programs the policy does not know, like an
 CLI, ask every time unless listed in `--lead-read-commands`. The list is matched by bare program
 name and applies to the lead only: a worker could put its own `bd` in front of the real one. Entries must be a bare program name plus plain words; writers, interpreters and network tools (`rm`, `git`, `bash`, `node`, `curl`, ...) are refused at startup.
 
-"Always allow for this agent" stores every rule key the call needed, and each key is scoped so it
-never covers more than the prompt said (the prompt shows the scope: `"Always allow for this
-agent" covers: ...`):
+"Always allow for this team" stores the requested rule keys for all agents working in this
+repository, within this Foreman profile. It also releases already-waiting requests covered by the
+same grant, and survives restarts. Other repositories still ask. Existing per-agent grants stay
+per-agent; they are not silently widened. "Allow once" still covers just the current request.
+The prompt states the repository and the exact scope of every grant:
+
 
 | key | covers |
 | --- | --- |
@@ -242,6 +368,11 @@ agent" covers: ...`):
 | `Bash:net:curl:<hosts>`, `Bash:net:gh:pr view` | that tool to those hosts / that subcommand |
 | `Bash:exact:<hash>` | only that exact command: anything whose arguments cannot be checked (xargs writes, `$VARS`, substitutions, unknown programs, process/system commands, inline code, shell scripts on stdin) |
 | `Read:<dir>`, `Grep:tree:<path>`, `Write:<dir>`, `Write:.git:<file>`, `WebFetch:<host>` | the non-Bash tools |
+
+Skill directories are trusted for reading, not editing or running their scripts. Links inside a
+skill that escape its trusted directory still ask. Yams runs offline by default; enabling model
+downloads, changing its corpus/cache/socket, searching other projects, writing pages and unknown
+options still ask. Dependency installation is a team approval, not an automatic default.
 
 `git push` is never allowed, whatever is stored. Keys from older versions of the Foreman
 (`Bash:subst`, `Bash:find -exec`, `Bash:xargs rm`, `lead:<prefix>`, `Bash:git fetch`,
@@ -293,7 +424,7 @@ spawns git with an empty environment); the policy refuses every command it can s
   (instead of silently registering the enclosing repo as the merge target).
 - Merges are refused (and the decision re-opens with the reason) if the checkout that has the base
   branch checked out has uncommitted tracked changes. A merge that would conflict is not made either:
-  with the claude backend the task goes back to its worker (`git merge <base>` in its worktree,
+  with a real-agent backend the task goes back to its worker (`git merge <base>` in its worktree,
   resolve, test, commit), then through CI and review to a fresh merge decision; other backends
   re-open the decision with the conflicting files.
 - If you have another branch checked out, a merge only moves the base branch ref.
@@ -368,3 +499,15 @@ npm run check       # all of the above + protocol doc freshness
 - **Banner says auth failed**: set `ANTHROPIC_API_KEY` (or a cloud provider switch) and restart the Foreman. With `--use-claude-login`: run `claude` and `/login`. The sim backend works without auth. Why the claude.ai login is opt-in: Anthropic does not allow third-party tools to offer it ([Agent SDK overview](https://code.claude.com/docs/en/agent-sdk/overview)); see `src/agents/claude/auth.ts`.
 - **Merge refused: uncommitted changes**: commit or stash in your checkout, then choose Merge again (the decision re-opened).
 - **Reset the demo repo**: `node sandbox/create-demo.mjs --force`.
+
+
+Provider verification uses local HTTP stubs and a scripted Codex app-server; the default suite makes no
+model calls. To also exercise an installed Codex CLI against a local Responses stub and the real MCP
+bridge (including live steering, interruption recovery, large histories, migration from exec, and
+isolation from personal integrations), run:
+
+```sh
+AGENTCRAFT_TEST_CODEX=codex npm exec vitest run test/codex-cli.integration.test.ts test/codex-lifecycle.integration.test.ts test/codex-native-migration.integration.test.ts
+```
+
+This opt-in test uses a temporary `CODEX_HOME` and dummy local credentials.

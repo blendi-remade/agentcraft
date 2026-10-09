@@ -27,7 +27,7 @@ interface Call {
 type WorkerScript = (o: Options, p: string, aborted: Promise<never>) => AsyncGenerator<SDKMessage>;
 let closedQueries = 0;
 
-function fake(calls: Call[], worker: Record<string, WorkerScript>) {
+function fake(calls: Call[], worker: Record<string, WorkerScript>, reviewer?: WorkerScript) {
   return ({ prompt, options }: { prompt: string; options: Options }) => {
     const p = String(prompt);
     const lead = 'create_task' in tools(options);
@@ -39,6 +39,10 @@ function fake(calls: Call[], worker: Record<string, WorkerScript>) {
       if (lead) {
         yield init(sid(1));
         if (p.startsWith('New goal')) await callTool(options, 'create_task', { title: 'Add a version flag', description: 'x', assignee: 'kit' });
+        else if (reviewer) {
+          yield* reviewer(options, p, aborted);
+          return;
+        }
         const review = /Review request: (t\d+)/.exec(p)?.[1];
         if (review) await callTool(options, 'request_merge', { task_id: review, summary: 'ok' });
         yield ok(sid(1));
@@ -58,12 +62,12 @@ function fake(calls: Call[], worker: Record<string, WorkerScript>) {
 const cleanup: string[] = [];
 afterAll(() => cleanup.forEach(rmrf));
 
-async function boot(workers: string, calls: Call[], worker: Record<string, WorkerScript>): Promise<{ h: Harness; repo: string }> {
+async function boot(workers: string, calls: Call[], worker: Record<string, WorkerScript>, reviewer?: WorkerScript): Promise<{ h: Harness; repo: string }> {
   const home = tempDir();
   const repo = await demoRepo();
   cleanup.push(home, path.dirname(repo));
   const h = makeForeman(home, ['--backend', 'claude', '--workers', workers, '--repo', repo]);
-  const b = new ClaudeBackend(h.fm, h.cfg.claude, { queryFn: fake(calls, worker) as never, skipAuthCheck: true });
+  const b = new ClaudeBackend(h.fm, h.cfg.claude, { queryFn: fake(calls, worker, reviewer) as never, skipAuthCheck: true });
   await h.fm.start(b);
   return { h, repo };
 }
@@ -243,6 +247,69 @@ describe('claude backend steering (fake SDK)', () => {
     expect(fm.agent('kit')!.activity).toMatch(/max turns/);
     expect(fm.tasks.get('t1')!.blockedReason).toMatch(/error_max_turns/);
     expect(h.events.some((e) => e.type === 'agent.upsert' && e.agent.id === 'kit' && e.agent.state === 'error')).toBe(true);
+    fm.taskAction('t1', 'cancel');
+    expect(fm.agent('kit')).toMatchObject({ active: true, state: 'idle', station: 'lounge', activity: 'task cancelled' });
+    expect(fm.agent('kit')!.taskId).toBeUndefined();
+    expect(fm.agent('kit')!.worktree).toBeUndefined();
     await fm.close();
+  });
+
+  it('cancelling a paused task discards its continuation without discarding work', async () => {
+    const calls: Call[] = [];
+    const { h } = await boot('kit', calls, { kit: kitAsks });
+    try {
+      await h.fm.submitGoal('version flag');
+      await until(() => h.fm.decisions.open().some(d => d.agentId === 'kit'));
+      const worktree = h.fm.repos.requireWorktree('demo-app', 'kit-t1').path;
+      await h.fm.agentAction('kit', 'pause');
+      await until(() => !Object.hasOwn((h.fm.store.data.backend.claude as { inflight: object }).inflight, 'kit'));
+      h.fm.taskAction('t1', 'cancel');
+      await h.fm.agentAction('kit', 'resume');
+      await new Promise(r => setTimeout(r, 200));
+      expect(h.fm.tasks.get('t1')!.status).toBe('cancelled');
+      expect(h.fm.agent('kit')).toMatchObject({ state: 'idle', station: 'lounge', active: true });
+      expect(h.fm.agent('kit')!.taskId).toBeUndefined();
+      expect(calls.filter(c => c.agent === 'kit')).toHaveLength(1);
+      expect(fs.readFileSync(path.join(worktree, 'KIT_PARTIAL.md'), 'utf8')).toContain('half-done');
+    } finally { await h.fm.close(); }
+  });
+
+  it.each(['paused', 'running'] as const)('reassigning a task preserves its %s lead review', async mode => {
+    const calls: Call[] = [];
+    let releaseReview!: () => void;
+    const reviewReady = new Promise<void>(resolve => { releaseReview = resolve; });
+    let reviews = 0;
+    const reviewer: WorkerScript = async function* (o, _p, aborted) {
+      reviews++;
+      await Promise.race([reviewReady, aborted]);
+      await callTool(o, 'request_merge', { task_id: 't1', summary: 'review complete' });
+      yield ok(sid(1));
+    };
+    const kitFinishes: WorkerScript = async function* (o) {
+      yield init(sid(2));
+      fs.appendFileSync(path.join(o.cwd!, 'README.md'), '\nversion flag (Kit)\n');
+      await callTool(o, 'update_task', { task_id: 't1', status: 'review', summary: 'done by Kit' });
+      yield ok(sid(2));
+    };
+    const { h } = await boot('kit,juniper', calls, { kit: kitFinishes, juniper: juniperFinishes }, reviewer);
+    const inflight = () => (h.fm.store.data.backend.claude as { inflight: Record<string, { taskId?: string }> }).inflight;
+    try {
+      await h.fm.submitGoal('version flag');
+      await until(() => reviews === 1);
+      if (mode === 'paused') {
+        await h.fm.agentAction('marlow', 'pause');
+        await until(() => !inflight().marlow);
+      }
+      h.fm.taskAction('t1', 'reassign', 'juniper');
+      if (mode === 'running') expect(inflight().marlow?.taskId).toBe('t1');
+      releaseReview();
+      if (mode === 'paused') await h.fm.agentAction('marlow', 'resume');
+      await until(() => h.fm.decisions.open().some(d => d.kind === 'merge' && d.taskId === 't1'));
+      expect(reviews).toBe(mode === 'paused' ? 2 : 1);
+      expect(h.fm.tasks.get('t1')).toMatchObject({ status: 'review', assignee: 'juniper' });
+    } finally {
+      releaseReview();
+      await h.fm.close();
+    }
   });
 });

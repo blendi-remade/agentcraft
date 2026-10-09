@@ -425,7 +425,7 @@ public final class ConsoleCommands {
 			return n >= 1 && n <= opts.size() ? opts.get(n - 1) : null;
 		}
 		String w = whole.toLowerCase(Locale.ROOT);
-		// longest full label first ("Always allow for this agent", "Request changes")
+		// longest full label first ("Always allow for this team", "Request changes")
 		String best = null;
 		for (String o : opts) {
 			String ol = o.toLowerCase(Locale.ROOT);

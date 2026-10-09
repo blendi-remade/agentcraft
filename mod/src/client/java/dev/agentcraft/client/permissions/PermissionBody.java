@@ -16,7 +16,7 @@ import net.minecraft.util.FormattedCharSequence;
 /**
  * The body of a permission decision in the decision screen: the tool and its exact command (in a
  * well with a risk-coloured stripe), the risk chip with the Foreman's reason, the working directory,
- * and what "Always allow for this agent" covers, so Allow once / Always allow / Deny is an informed
+ * and what "Always allow for this team" covers, so Allow once / Always allow / Deny is an informed
  * one-key choice.
  */
 public final class PermissionBody {
@@ -27,7 +27,7 @@ public final class PermissionBody {
 
 	/** Button labels shown for the permission options (the answer still sends the exact protocol label). */
 	public static String buttonLabel(String option) {
-		return option.equals(Protocol.ALWAYS_ALLOW) ? "Always allow" : option;
+		return option.startsWith("Always allow for this ") ? "Always allow" : option;
 	}
 
 	/** Height {@link #draw} will use at this width. */
@@ -123,7 +123,8 @@ public final class PermissionBody {
 		Panels.divider(g, x, cy - 3, w);
 		// the "2" keycap ties this explanation to the "2 Always allow" button
 		UiBits.keycap(g, font, "2", x, cy);
-		g.text(font, "\"Always allow for this agent\" covers:", x + 16, cy + 2, muted, false);
+		String scopeLabel = d.options().stream().filter(o -> o.startsWith("Always allow for this ")).findFirst().orElse("Always allow");
+		g.text(font, "\"" + scopeLabel + "\" covers:", x + 16, cy + 2, muted, false);
 		ly = cy + 12;
 		for (FormattedCharSequence line : l.covers()) {
 			g.text(font, line, x + 16, ly, ink, false);

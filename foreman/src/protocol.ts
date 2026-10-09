@@ -61,12 +61,12 @@ export type NotifyLevel = z.infer<typeof NotifyLevel>;
 export const WorktreeStatus = z.enum(['active', 'merged', 'abandoned']);
 export type WorktreeStatus = z.infer<typeof WorktreeStatus>;
 
-export const BackendName = z.enum(['sim', 'claude', 'codex']);
+export const BackendName = z.enum(['sim', 'claude', 'codex', 'openai']);
 export type BackendName = z.infer<typeof BackendName>;
 
 export const AuthStatus = z
   .enum(['ok', 'failed', 'unknown', 'checking'])
-  .describe('`failed` must be shown loudly (in-world banner): the claude backend cannot run.');
+  .describe('`failed` must be shown loudly (in-world banner): the selected backend cannot run.');
 export type AuthStatus = z.infer<typeof AuthStatus>;
 
 const Id = z.string().min(1);
@@ -93,7 +93,7 @@ export const Agent = z.object({
   worktree: Id.optional().describe('id of the worktree the agent is working in (see Repo.worktrees)'),
   paused: z.boolean(),
   active: z.boolean().describe('false = off shift (not on the current team, or stopped by the user); render idle in the lounge'),
-  engine: z.enum(['claude', 'codex']).optional().describe('which engine runs this agent (absent: the sim)'),
+  engine: z.enum(['claude', 'codex', 'openai']).optional().describe('which engine runs this agent (absent: the sim)'),
   model: z.string().optional().describe('the model it runs, for display, e.g. "Opus 5.5" or "GPT-6 Astra" (the real model once a turn reported it)'),
 });
 export type Agent = z.infer<typeof Agent>;
@@ -143,7 +143,7 @@ export const Decision = z.object({
   context: z
     .string()
     .optional()
-    .describe('extra detail, multi-line plain text. permission: why it asks, the cwd, and a line `"Always allow for this agent" covers: ...` (the scope of that choice). merge: summary + diff stat; after a refused merge the decision is open again and this ends with `Merge refused: <reason>`'),
+    .describe('extra detail, multi-line plain text. permission: why it asks, the cwd, and a line `"Always allow for this team" covers: ...` (the scope of that choice). merge: summary + diff stat; after a refused merge the decision is open again and this ends with `Merge refused: <reason>`'),
   status: DecisionStatus,
   answer: DecisionAnswer.optional(),
   taskId: Id.optional(),
@@ -219,7 +219,7 @@ export const ForemanStatus = z.object({
   account: z.string().optional().describe('e.g. organization / plan when auth ok'),
   speed: z.number().optional().describe('sim: speed multiplier'),
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
-  costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
+  costUsd: z.number().optional().describe('when reported by the provider: estimated spend of this profile (sum over all sessions, survives restarts)'),
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;
@@ -504,4 +504,4 @@ export const ENTITY_SCHEMAS = {
 /** Merge decision option labels (exact strings). */
 export const MERGE_OPTIONS = ['Merge', 'Request changes', 'Reject'] as const;
 /** Permission decision option labels (exact strings). */
-export const PERMISSION_OPTIONS = ['Allow once', 'Always allow for this agent', 'Deny'] as const;
+export const PERMISSION_OPTIONS = ['Allow once', 'Always allow for this team', 'Deny'] as const;

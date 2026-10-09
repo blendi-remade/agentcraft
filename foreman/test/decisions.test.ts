@@ -65,6 +65,21 @@ describe('DecisionQueue', () => {
     expect(fm.decisions.get(e.id)!.answer).toBeUndefined();
   });
 
+  it('aborting a waiter leaves its question open and allows a new waiter after restart', async () => {
+    const { fm } = setup();
+    const d = fm.createDecision({ agentId: 'kit', kind: 'question', question: 'Keep this question?', options: ['Yes'] });
+    const controller = new AbortController();
+    const pending = fm.decisions.wait(d.id, controller.signal);
+    const rejected = expect(pending).rejects.toThrow();
+    controller.abort();
+    await rejected;
+    expect(fm.decisions.hasWaiters(d.id)).toBe(false);
+    expect(fm.decisions.get(d.id)!.status).toBe('open');
+    const resumed = fm.decisions.wait(d.id);
+    await fm.answerDecision(d.id, 'Yes');
+    expect((await resumed).answer?.option).toBe('Yes');
+  });
+
   it('waiters do not wake before the answer side effects have run (merge settle race)', async () => {
     const { fm } = setup();
     const d = fm.createDecision({ agentId: 'marlow', kind: 'question', question: 'q?', options: ['a'] });

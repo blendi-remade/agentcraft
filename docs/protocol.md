@@ -26,10 +26,10 @@
 - <a id="feedkind"></a>**FeedKind**: `goal`, `plan`, `task`, `message`, `decision`, `merge`, `ci`, `memory`, `system`, `error`, `user`
 - <a id="notifylevel"></a>**NotifyLevel**: `info`, `warn`, `need_user`
 - <a id="worktreestatus"></a>**WorktreeStatus**: `active`, `merged`, `abandoned`
-- <a id="backendname"></a>**BackendName**: `sim`, `claude`, `codex`
-- <a id="authstatus"></a>**AuthStatus**: `ok`, `failed`, `unknown`, `checking` - `failed` must be shown loudly (in-world banner): the claude backend cannot run.
+- <a id="backendname"></a>**BackendName**: `sim`, `claude`, `codex`, `openai`
+- <a id="authstatus"></a>**AuthStatus**: `ok`, `failed`, `unknown`, `checking` - `failed` must be shown loudly (in-world banner): the selected backend cannot run.
 
-Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; permission decisions use `Allow once`, `Always allow for this agent`, `Deny`. Question decisions use agent-supplied options (may be empty: free text).
+Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; permission decisions use `Allow once`, `Always allow for this team`, `Deny`. Question decisions use agent-supplied options (may be empty: free text).
 
 ## Entities
 
@@ -52,7 +52,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `worktree` | string | no | id of the worktree the agent is working in (see Repo.worktrees) |
 | `paused` | boolean | yes |  |
 | `active` | boolean | yes | false = off shift (not on the current team, or stopped by the user); render idle in the lounge |
-| `engine` | `claude` \| `codex` | no | which engine runs this agent (absent: the sim) |
+| `engine` | `claude` \| `codex` \| `openai` | no | which engine runs this agent (absent: the sim) |
 | `model` | string | no | the model it runs, for display, e.g. "Opus 5.5" or "GPT-6 Astra" (the real model once a turn reported it) |
 
 ### <a id="logentry"></a>LogEntry
@@ -95,7 +95,7 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | `kind` | [DecisionKind](#decisionkind) | yes |  |
 | `question` | string | yes |  |
 | `options` | string[] | yes | button labels; first is the default/recommended choice |
-| `context` | string | no | extra detail, multi-line plain text. permission: why it asks, the cwd, and a line `"Always allow for this agent" covers: ...` (the scope of that choice). merge: summary + diff stat; after a refused merge the decision is open again and this ends with `Merge refused: <reason>` |
+| `context` | string | no | extra detail, multi-line plain text. permission: why it asks, the cwd, and a line `"Always allow for this team" covers: ...` (the scope of that choice). merge: summary + diff stat; after a refused merge the decision is open again and this ends with `Merge refused: <reason>` |
 | `status` | [DecisionStatus](#decisionstatus) | yes | `cancelled` = became moot (agent stopped, task cancelled); render like answered. |
 | `answer` | [DecisionAnswer](#decisionanswer) | no |  |
 | `taskId` | string | no |  |
@@ -180,12 +180,12 @@ Exact option labels: merge decisions use `Merge`, `Request changes`, `Reject`; p
 | --- | --- | --- | --- |
 | `version` | string | yes |  |
 | `backend` | [BackendName](#backendname) | yes |  |
-| `auth` | [AuthStatus](#authstatus) | yes | `failed` must be shown loudly (in-world banner): the claude backend cannot run. |
+| `auth` | [AuthStatus](#authstatus) | yes | `failed` must be shown loudly (in-world banner): the selected backend cannot run. |
 | `message` | string | no | human-readable backend/auth status for the banner |
 | `account` | string | no | e.g. organization / plan when auth ok |
 | `speed` | number | no | sim: speed multiplier |
 | `showcase` | boolean | no | sim: holding a static showcase state (`--showcase` or `--showcase late`) |
-| `costUsd` | number | no | claude: estimated spend of this profile (sum over all sessions, survives restarts) |
+| `costUsd` | number | no | when reported by the provider: estimated spend of this profile (sum over all sessions, survives restarts) |
 | `userName` | string | no | the person the team works for, as the agents address them (UI: "<name> answered") |
 
 ### <a id="agentlogs"></a>AgentLogs

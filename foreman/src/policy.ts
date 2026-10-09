@@ -1,4 +1,4 @@
-// Permission policy for agent tool calls (claude backend `canUseTool`).
+// Permission policy shared by every real backend's `canUseTool`.
 //
 //   allow -> run without asking         (reads/edits inside the agent's worktree, safe dev commands)
 //   ask   -> becomes a `permission` decision in-world   (outside worktree, network, destructive, unknown)
@@ -20,7 +20,7 @@
 // the worktree (after `cd`, `-C`, or through a link) is checked as an outside repository, and
 // gitsafety.ts stops git from walking up out of the worktree. Agents never sign (`-S` is refused).
 //
-// Rule keys ("Always allow for this agent") are scoped so an approval never covers more than the
+// Rule keys ("Always allow for this team") are scoped so an approval never covers more than the
 // prompt that created it. A command may need several keys; it runs only when all are approved.
 //   Bash:<capability>                 something confined to the worktree (`Bash:rm -r`,
 //                                     `Bash:npm install`, `Bash:find -delete`, `Bash:git reset --hard`).
@@ -54,7 +54,7 @@ export interface PolicyContext {
   cwd: string;
   /** extra directories the agent may read (e.g. the memory dir) */
   readDirs?: string[];
-  /** rule keys the user chose "Always allow for this agent" on */
+  /** scoped rule keys approved for this agent or its repository team */
   alwaysAllow?: string[];
   /** our in-process MCP server name */
   mcpServer?: string;
@@ -206,7 +206,7 @@ function inArea(ctx: PolicyContext, abs: string, mode: 'r' | 'w' | 'x', opts: Ar
     // scratch space, but never a recursive change of the temp dir itself
     if (isInsideOrEqual(abs, d) && !(opts.recursive && mode === 'w' && isInsideOrEqual(d, abs))) return true;
   }
-  if (mode !== 'w' && (ctx.readDirs ?? []).some((d) => isInsideOrEqual(abs, d))) return true;
+  if (mode === 'r' && (ctx.readDirs ?? []).some((d) => isInsideOrEqual(abs, d) && realInside(abs, d))) return true;
   return false;
 }
 
@@ -910,7 +910,7 @@ const SHELLS = new Set(['bash', 'sh', 'zsh', 'dash', 'ksh', 'fish', 'cmd', 'powe
 const GREP_CMDS = new Set(['grep', 'egrep', 'fgrep', 'rg', 'ag', 'ack', 'select-string', 'sls', 'findstr']);
 const SYS_PKG = new Set(['pip', 'pip3', 'pipx', 'uv', 'poetry', 'pdm', 'conda', 'gem', 'bundle', 'brew', 'choco', 'winget', 'scoop', 'apt', 'apt-get', 'yum', 'dnf', 'pacman', 'composer', 'nuget']);
 const PY_SAFE_MODULES = new Set(['pytest', 'unittest', 'doctest', 'py_compile', 'compileall', 'json.tool', 'mypy', 'ruff', 'black', 'isort', 'flake8', 'pylint', 'coverage', 'timeit', 'tabnanny', 'pyflakes', 'tokenize', 'ast', 'dis']);
-const NPX_SAFE = new Set(['tsc', 'vitest', 'jest', 'eslint', 'prettier', 'tsx', 'mocha', 'ts-node', 'biome', 'esbuild', 'vite']);
+const NPX_SAFE = new Set(['tsc', 'vitest', 'jest', 'eslint', 'prettier', 'tsx', 'mocha', 'ts-node', 'biome', 'esbuild', 'vite', 'playwright']);
 /** cmd.exe-style commands whose `/s`-like arguments are switches, not paths */
 const CMD_SWITCH_CMDS = new Set(['del', 'erase', 'rd', 'rmdir', 'dir', 'copy', 'move', 'attrib', 'xcopy', 'findstr', 'tree']);
 /** env vars that make later commands run code (pagers, editors, ssh commands, preloads) */
@@ -1355,6 +1355,26 @@ function classifyGit(args: string[], sc: SegCtx): J {
 
 function classifyPackageManager(cmd: string, rest: string[], sc: SegCtx): J {
   const paths = pathAsks(argCandidates(rest), 'w', sc);
+  // npm exec [--offline] -- <installed tool> has the same local execution semantics as npx.
+  // Only accept the simple form: package/call/prefix/config options keep the normal prompt.
+  if (cmd === 'npm') {
+    let i = 0;
+    const flags: string[] = [];
+    const takeFlags = () => {
+      while (['--offline', '--no', '--no-install'].includes(rest[i] ?? '')) flags.push(rest[i++]!);
+    };
+    takeFlags();
+    if (rest[i] === 'exec' || rest[i] === 'x') {
+      i++;
+      takeFlags();
+      const separated = rest[i] === '--';
+      if (separated) i++;
+      const tool = rest[i];
+      if (separated && tool && NPX_SAFE.has(tool) && (flags.length > 0 || localBin(tool, sc))) {
+        return merge(paths, classifyWords(tool, tool, rest.slice(i + 1), { ...sc, cmd: tool }, { docs: [], pipeTrusted: false, viaXargs: false }));
+      }
+    }
+  }
   const positional = rest.filter((a) => !a.startsWith('-'));
   const sub = (positional[0] ?? '').toLowerCase();
   if (rest.some((a) => /^(-g|--global|--location=global|--location=user)$/.test(a))) return merge(paths, exact(sc.env, `${cmd} ${sub} --global changes tools outside the worktree`));
@@ -1475,6 +1495,9 @@ function classifySegment(seg: Segment, vcwd: string, env: Env, substs: Subst[], 
     const name = a.slice(0, a.indexOf('='));
     const value = a.slice(a.indexOf('=') + 1);
     if (EXEC_VARS.test(name) && !(/PAGER/i.test(name) && BENIGN_PAGER.test(value.trim()))) acc = merge(acc, exact(env, `sets ${name}, which makes later commands run other programs`));
+    if (/^YAMS_/i.test(name) && !(/^YAMS_(ALLOW_NET|NO_SERVICE)$/i.test(name) && value === (name.toUpperCase() === 'YAMS_ALLOW_NET' ? '0' : '1'))) {
+      acc = merge(acc, exact(env, `sets ${name}, which can change Yams paths or enable downloads`));
+    }
   }
 
   // redirections: `> file` writes, `< file` reads (relative targets resolve in the virtual cwd)
@@ -1593,6 +1616,29 @@ function classifyWords(cmd: string, cmdWord: string, rest: string[], sc: SegCtx,
   }
 
   if (cmd === 'git') return classifyGit(rest, sc);
+  if (cmd === 'yams') {
+    // Search and rebuild only the current project's local cache. Other projects, corpus/socket
+    // overrides, wiki writes, downloads and unknown future flags need explicit approval.
+    if (!isInsideOrEqual(vcwd, ctx.cwd) || !realInside(vcwd, ctx.cwd)) return exact(env, 'Yams outside this worktree');
+    for (let i = 0; i < rest.length; i++) {
+      const arg = rest[i]!;
+      if (isDynamic(arg)) return exact(env, 'Yams arguments cannot be checked');
+      if (arg === '--') break;
+      if (['--json', '--full', '--index', '--stats', '--no-gate', '--explain', '--version', '--help', '-h'].includes(arg)) continue;
+      if (['-k', '--min-score', '--max-gap'].includes(arg)) {
+        if (!/^-?\d+(\.\d+)?$/.test(rest[++i] ?? '')) return exact(env, 'Yams numeric option cannot be checked');
+        continue;
+      }
+      if (/^-k\d+$|^--(?:min-score|max-gap)=-?\d+(\.\d+)?$/.test(arg)) continue;
+      if (arg.startsWith('-')) return exact(env, `Yams option needs approval: ${arg}`);
+    }
+    return ok('Yams local project search/cache', !rest.includes('--index'));
+  }
+  if (cmd === 'playwright') {
+    const paths = pathAsks(argCandidates(rest, true), 'w', sc);
+    if (['test', '--version', '--help', '-h', 'help'].includes(rest[0] ?? '')) return merge(paths, ok('Playwright project tests', false));
+    return merge(paths, need('Playwright downloads browsers, opens a browser or manages local processes', `Bash:playwright ${rest[0] ?? ''}`));
+  }
   // eval "<cmd>": classify the evaluated command
   if (cmd === 'eval') return classifyCommand(rest.join(' '), vcwd, { ...env, depth: env.depth + 1 });
   // source/. runs a script in the current shell: like running a project script

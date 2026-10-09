@@ -4,8 +4,8 @@ import type { Foreman } from '../../foreman.js';
 import { firstLine, headLines, tailLines, truncate } from '../../util/text.js';
 import { relPath, toolActivity } from '../activity.js';
 
-import type { TurnStats } from '../engine.js';
-export type { TurnStats };
+export type { TurnStats } from '../runtime.js';
+import type { TurnStats } from '../runtime.js';
 
 interface Block {
   type: string;

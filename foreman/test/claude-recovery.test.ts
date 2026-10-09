@@ -197,6 +197,31 @@ describe('claude backend restart recovery (fake SDK)', () => {
     await h.fm.close();
   });
 
+  it('clears a cancelled task left attached to an errored worker and never resumes its stale session', async () => {
+    const { home, repo } = await fresh();
+    let { h } = await boot(home, repo, 'hang', []);
+    await h.fm.submitGoal('version flag');
+    await until(() => h.fm.store.data.sessions['kit:t1']?.sessionId === WORK_S);
+    await h.fm.close();
+    const stateFile = path.join(home, 'claude', 'state.json');
+    const state = JSON.parse(fs.readFileSync(stateFile, 'utf8'));
+    state.tasks.find((t: { id: string }) => t.id === 't1').status = 'cancelled';
+    Object.assign(state.agents.find((a: { id: string }) => a.id === 'kit'), { state: 'error', activity: 't1 failed', station: 'desk' });
+    fs.writeFileSync(stateFile, JSON.stringify(state));
+
+    const calls: Call[] = [];
+    ({ h } = await boot(home, repo, 'finish', calls));
+    try {
+      await new Promise(r => setTimeout(r, 200));
+      expect(h.fm.agent('kit')).toMatchObject({ active: true, state: 'idle', station: 'lounge', activity: 'task cancelled' });
+      expect(h.fm.agent('kit')!.taskId).toBeUndefined();
+      expect(h.fm.agent('kit')!.worktree).toBeUndefined();
+      expect((h.fm.store.data.backend.claude as { inflight: Record<string, unknown> }).inflight.kit).toBeUndefined();
+      expect(calls.some(c => !c.lead)).toBe(false);
+      expect(h.fm.tasks.get('t1')!.status).toBe('cancelled');
+    } finally { await h.fm.close(); }
+  });
+
   it('a task left "doing" with no turn behind it is re-queued and its session resumed', async () => {
     const { home, repo } = await fresh();
     const calls: Call[] = [];
