@@ -10,10 +10,8 @@ dist/
 .gradle-home/
 .venv/
 __pycache__/
-sandbox/*/
 .agentcraft-home/
 mod/run/
-foreman/scratch/
 mod/.gradle/
 mod/build/
 .claude/
