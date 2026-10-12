@@ -18,6 +18,7 @@ import dev.agentcraft.client.foreman.Protocol.Repo;
 import dev.agentcraft.client.hud.Keys;
 import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.ModScreen;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
@@ -26,7 +27,6 @@ import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.gui.Font;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -40,7 +40,7 @@ import org.jspecify.annotations.Nullable;
  * console's own lines, each agent in its colour). Non-pausing, so the HQ keeps moving behind it.
  * See {@link ConsoleCommands} for the input language and {@link ConsoleActions} for what is sent.
  */
-public class ConsoleScreen extends Screen {
+public class ConsoleScreen extends ModScreen {
 	private static final int M = 8;
 	private static final int ROW = 10;
 	private static final int MAX_POPUP = 6;
@@ -485,7 +485,7 @@ public class ConsoleScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
+	protected boolean leftClicked(MouseButtonEvent e, boolean doubleClick) {
 		double mx = e.x();
 		double my = e.y();
 		// completion rows
@@ -526,7 +526,7 @@ public class ConsoleScreen extends Screen {
 			}
 			return true;
 		}
-		return super.mouseClicked(e, doubleClick);
+		return false;
 	}
 
 	@Override

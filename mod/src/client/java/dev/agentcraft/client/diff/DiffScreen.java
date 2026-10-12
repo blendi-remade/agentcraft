@@ -15,6 +15,7 @@ import dev.agentcraft.client.foreman.Protocol.Repo;
 import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.Worktree;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.ModScreen;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
@@ -23,7 +24,6 @@ import java.util.List;
 import java.util.Locale;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.EditBox;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.CharacterEvent;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
@@ -47,7 +47,7 @@ import org.jspecify.annotations.Nullable;
  *       Ctrl+Enter merge · F5 / u refresh · t text colours · Esc close
  * </pre>
  */
-public final class DiffScreen extends Screen {
+public final class DiffScreen extends ModScreen {
 	/** What to review: a merge decision (preferred) or a bare repo + worktree. */
 	public record Target(@Nullable String decisionId, @Nullable String repoId, @Nullable String worktree) {
 		public boolean isEmpty() {
@@ -1606,52 +1606,50 @@ public final class DiffScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
+	protected boolean leftClicked(MouseButtonEvent e, boolean doubleClick) {
 		double mx = e.x();
 		double my = e.y();
-		if (e.button() == 0) {
-			for (Btn b : buttons) {
-				if (b.enabled() && b.hit(mx, my)) {
-					pressed = b.id();
-					act(b.id());
-					return true;
-				}
-			}
-			// sidebar file rows
-			int ly = sideListY();
-			int lh = sideListH();
-			if (doc != null && mx >= sideX && mx < sideX + sideW && my >= ly && my < ly + lh) {
-				int i = (int) ((my - ly + sideScroll) / SIDE_ROW_H);
-				if (i >= 0 && i < doc.files.size()) {
-					goFile(i);
-					return true;
-				}
-			}
-			// scrollbar
-			if (doc != null && mx >= codeX + codeW - 9 && mx < codeX + codeW && my >= viewY && my < viewY + viewH && doc.height > viewH) {
-				int thumbH = Math.max(10, Math.round((float) viewH * viewH / doc.height));
-				int travel = viewH - thumbH;
-				float ty = viewY + travel * (scroll / Math.max(1, maxScroll()));
-				if (my >= ty && my < ty + thumbH) {
-					dragThumb = true;
-					dragOffset = my - ty;
-				} else {
-					float f = (float) ((my - viewY - thumbH / 2.0) / Math.max(1, travel));
-					spy = true;
-					scrollTo(f * maxScroll());
-				}
+		for (Btn b : buttons) {
+			if (b.enabled() && b.hit(mx, my)) {
+				pressed = b.id();
+				act(b.id());
 				return true;
 			}
-			// clicking a hunk/file header row in the code pane: focus that file
-			if (doc != null && mx >= viewX && mx < viewX + viewW && my >= viewY && my < viewY + viewH) {
-				int dy = (int) (my - viewY + scroll);
-				int f = doc.fileAt(dy);
-				if (f >= 0) {
-					focusFile = f;
-				}
+		}
+		// sidebar file rows
+		int ly = sideListY();
+		int lh = sideListH();
+		if (doc != null && mx >= sideX && mx < sideX + sideW && my >= ly && my < ly + lh) {
+			int i = (int) ((my - ly + sideScroll) / SIDE_ROW_H);
+			if (i >= 0 && i < doc.files.size()) {
+				goFile(i);
+				return true;
 			}
 		}
-		return super.mouseClicked(e, doubleClick);
+		// scrollbar
+		if (doc != null && mx >= codeX + codeW - 9 && mx < codeX + codeW && my >= viewY && my < viewY + viewH && doc.height > viewH) {
+			int thumbH = Math.max(10, Math.round((float) viewH * viewH / doc.height));
+			int travel = viewH - thumbH;
+			float ty = viewY + travel * (scroll / Math.max(1, maxScroll()));
+			if (my >= ty && my < ty + thumbH) {
+				dragThumb = true;
+				dragOffset = my - ty;
+			} else {
+				float f = (float) ((my - viewY - thumbH / 2.0) / Math.max(1, travel));
+				spy = true;
+				scrollTo(f * maxScroll());
+			}
+			return true;
+		}
+		// clicking a hunk/file header row in the code pane: focus that file
+		if (doc != null && mx >= viewX && mx < viewX + viewW && my >= viewY && my < viewY + viewH) {
+			int dy = (int) (my - viewY + scroll);
+			int f = doc.fileAt(dy);
+			if (f >= 0) {
+				focusFile = f;
+			}
+		}
+		return false;
 	}
 
 	@Override

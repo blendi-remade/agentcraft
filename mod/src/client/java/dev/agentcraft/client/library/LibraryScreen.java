@@ -9,6 +9,7 @@ import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.ModScreen;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
@@ -18,7 +19,6 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Set;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.network.chat.Component;
@@ -34,7 +34,7 @@ import org.jspecify.annotations.Nullable;
  * keys: Up/Down entry · Tab / 1-9 scope · j k / wheel / PgUp PgDn scroll · c copy markdown · Esc close
  * </pre>
  */
-public final class LibraryScreen extends Screen {
+public final class LibraryScreen extends ModScreen {
 	private static final int ROW_H = 39;
 
 	private String scope;
@@ -573,38 +573,36 @@ public final class LibraryScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
+	protected boolean leftClicked(MouseButtonEvent e, boolean doubleClick) {
 		double mx = e.x();
 		double my = e.y();
-		if (e.button() == 0) {
-			for (int i = 0; i < tabRects.size(); i++) {
-				int[] r = tabRects.get(i);
-				if (mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3]) {
-					setScope(tabScopes.get(i));
-					return true;
-				}
-			}
-			if (mx >= ix && mx < ix + listW && my >= bodyY && my < bodyBottom) {
-				int i = (int) ((my - bodyY + listScroll) / ROW_H);
-				if (i >= 0 && i < entries.size()) {
-					select(i);
-				}
-				return true;
-			}
-			int sbx = readerX + readerW - 8;
-			if (body != null && body.height > textH && mx >= sbx && mx < sbx + 6 && my >= textY && my < textY + textH) {
-				int thumbH = Math.max(10, textH * textH / body.height);
-				float thy = textY + (textH - thumbH) * (scroll / Math.max(1, maxScroll()));
-				if (my >= thy && my < thy + thumbH) {
-					dragThumb = true;
-					dragOffset = my - thy;
-				} else {
-					scrollTarget = (float) ((my - textY - thumbH / 2.0) / Math.max(1, textH - thumbH)) * maxScroll();
-				}
+		for (int i = 0; i < tabRects.size(); i++) {
+			int[] r = tabRects.get(i);
+			if (mx >= r[0] && mx < r[0] + r[2] && my >= r[1] && my < r[1] + r[3]) {
+				setScope(tabScopes.get(i));
 				return true;
 			}
 		}
-		return super.mouseClicked(e, doubleClick);
+		if (mx >= ix && mx < ix + listW && my >= bodyY && my < bodyBottom) {
+			int i = (int) ((my - bodyY + listScroll) / ROW_H);
+			if (i >= 0 && i < entries.size()) {
+				select(i);
+			}
+			return true;
+		}
+		int sbx = readerX + readerW - 8;
+		if (body != null && body.height > textH && mx >= sbx && mx < sbx + 6 && my >= textY && my < textY + textH) {
+			int thumbH = Math.max(10, textH * textH / body.height);
+			float thy = textY + (textH - thumbH) * (scroll / Math.max(1, maxScroll()));
+			if (my >= thy && my < thy + thumbH) {
+				dragThumb = true;
+				dragOffset = my - thy;
+			} else {
+				scrollTarget = (float) ((my - textY - thumbH / 2.0) / Math.max(1, textH - thumbH)) * maxScroll();
+			}
+			return true;
+		}
+		return false;
 	}
 
 	@Override

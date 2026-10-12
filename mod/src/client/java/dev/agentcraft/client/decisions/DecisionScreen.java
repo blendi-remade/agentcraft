@@ -20,6 +20,7 @@ import dev.agentcraft.client.hud.Toasts;
 import dev.agentcraft.client.hud.UiBits;
 import dev.agentcraft.client.permissions.PermissionBody;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.ModScreen;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
@@ -59,7 +60,7 @@ import org.jspecify.annotations.Nullable;
  *       merges and permissions on none (pick with 1-9, or the arrows then Enter); Space does nothing.</li>
  * </ul>
  */
-public class DecisionScreen extends Screen {
+public class DecisionScreen extends ModScreen {
 	private static final int MAX_W = 440;
 	/** Option keys are ignored this long after the screen opens or a decision comes up by itself. */
 	static final int ARM_MS = 350;
@@ -710,12 +711,12 @@ public class DecisionScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(MouseButtonEvent e, boolean doubleClick) {
+	protected boolean leftClicked(MouseButtonEvent e, boolean doubleClick) {
 		Decision d = current();
 		double mx = e.x();
 		double my = e.y();
 		if (d == null) {
-			return super.mouseClicked(e, doubleClick);
+			return false;
 		}
 		for (Btn b : buttons) {
 			if (mx >= b.x() && mx < b.x() + b.w() && my >= b.y() && my < b.y() + 20) {
@@ -753,7 +754,7 @@ public class DecisionScreen extends Screen {
 		if (textFocused && answer.isEmpty() && !requestChanges) {
 			focusText(false);
 		}
-		return super.mouseClicked(e, doubleClick);
+		return false;
 	}
 
 	@Override

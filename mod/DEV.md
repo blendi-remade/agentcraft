@@ -27,7 +27,9 @@ The spec said 1.21.x. **26.3 was chosen instead** for these reasons:
 The cost is that many APIs changed after 1.21. Do **not** code from 1.21-era memory. Check the
 26.3 sources. Changes that matter to this project:
 - **Windowing and input use SDL3, not GLFW** (`com.mojang.blaze3d.platform.Window`, `SDLHints`).
-  Key codes are SDL scancodes (`InputConstants.KEY_ESCAPE == 41`).
+  Key codes are SDL scancodes (`InputConstants.KEY_ESCAPE == 41`). Mouse buttons are SDL numbers too:
+  left is `InputConstants.MOUSE_BUTTON_LEFT == 1`, not GLFW's 0. Mod screens extend `ui.ModScreen` and
+  override `leftClicked` instead of `mouseClicked`, so the button check lives in one place.
 - Rendering is split into extract and render passes (`GameRenderer.extract/render`, `*RenderState`).
   Screens are drawn through `GuiGraphicsExtractor`. Backends live under `com.mojang.renderpearl`.
   OpenGL is the default; Vulkan is optional (options key `preferredGraphicsBackend`).

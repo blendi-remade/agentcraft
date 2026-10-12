@@ -13,6 +13,7 @@ import dev.agentcraft.client.foreman.Protocol.DecisionKind;
 import dev.agentcraft.client.foreman.Protocol.LogEntry;
 import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.ModScreen;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
@@ -56,7 +57,7 @@ import org.jspecify.annotations.Nullable;
  * Shootable as {@code dev.screen {open:"agent"}} (last clicked agent, else whoever needs you first)
  * or {@code dev.agents.card {agent}}.
  */
-public final class AgentCardScreen extends Screen {
+public final class AgentCardScreen extends ModScreen {
 	private static final int W = 252;
 	private static final int ROW = 10;
 	private static final int OPT_H = 15;
@@ -760,30 +761,28 @@ public final class AgentCardScreen extends Screen {
 	// ---------------------------------------------------------------- input
 
 	@Override
-	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0) {
-			for (Btn b : buttons) {
-				if (b.hit(event.x(), event.y())) {
-					press(b.id);
-					return true;
-				}
-			}
-			if (review.hit(event.x(), event.y())) {
-				press("review");
-				return true;
-			}
-			for (int i = 0; i < optionRows.size(); i++) {
-				if (optionRows.get(i).hit(event.x(), event.y())) {
-					option(i);
-					return true;
-				}
-			}
-			if (event.x() < x0 || event.x() > x0 + W || event.y() < y0 || event.y() > y0 + h) {
-				onClose();
+	protected boolean leftClicked(MouseButtonEvent event, boolean doubleClick) {
+		for (Btn b : buttons) {
+			if (b.hit(event.x(), event.y())) {
+				press(b.id);
 				return true;
 			}
 		}
-		return super.mouseClicked(event, doubleClick);
+		if (review.hit(event.x(), event.y())) {
+			press("review");
+			return true;
+		}
+		for (int i = 0; i < optionRows.size(); i++) {
+			if (optionRows.get(i).hit(event.x(), event.y())) {
+				option(i);
+				return true;
+			}
+		}
+		if (event.x() < x0 || event.x() > x0 + W || event.y() < y0 || event.y() > y0 + h) {
+			onClose();
+			return true;
+		}
+		return false;
 	}
 
 	@Override

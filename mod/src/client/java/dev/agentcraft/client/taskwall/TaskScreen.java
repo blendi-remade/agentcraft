@@ -14,13 +14,13 @@ import dev.agentcraft.client.monitor.MonitorFeature;
 import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.ui.Kit;
+import dev.agentcraft.client.ui.ModScreen;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.client.input.KeyEvent;
 import net.minecraft.client.input.MouseButtonEvent;
 import net.minecraft.client.renderer.RenderPipelines;
@@ -36,7 +36,7 @@ import org.jspecify.annotations.Nullable;
  * {@code Foreman.taskAction}, with the Foreman's answer shown in place. Left/right browse the
  * other tasks in wall order. Paper panel, ink text, one clay primary action, no shadows.
  */
-public class TaskScreen extends Screen {
+public class TaskScreen extends ModScreen {
 	private static final int W = 320;
 	private String taskId;
 	private @Nullable String feedback;
@@ -453,16 +453,14 @@ public class TaskScreen extends Screen {
 	}
 
 	@Override
-	public boolean mouseClicked(MouseButtonEvent event, boolean doubleClick) {
-		if (event.button() == 0) {
-			for (Btn b : List.copyOf(buttons)) {
-				if (b.enabled() && b.hit(event.x(), event.y())) {
-					press(b);
-					return true;
-				}
+	protected boolean leftClicked(MouseButtonEvent event, boolean doubleClick) {
+		for (Btn b : List.copyOf(buttons)) {
+			if (b.enabled() && b.hit(event.x(), event.y())) {
+				press(b);
+				return true;
 			}
 		}
-		return super.mouseClicked(event, doubleClick);
+		return false;
 	}
 
 	@Override
