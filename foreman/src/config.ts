@@ -136,7 +136,9 @@ export function parseFlags(argv: string[]): { flags: Flags; positional: string[]
     }
     const next = argv[i + 1];
     if (next !== undefined && !next.startsWith('--')) {
-      flags[key] = next;
+      // --repo may repeat (the launchers pass one per repo); keep them all as a comma list
+      const prev = flags[key];
+      flags[key] = key === 'repo' && typeof prev === 'string' ? `${prev},${next}` : next;
       i++;
     } else flags[key] = true;
   }

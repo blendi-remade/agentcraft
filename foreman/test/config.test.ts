@@ -26,6 +26,11 @@ describe('loadConfig argument checking', () => {
     expect(cfg.notify).toBe(false);
   });
 
+  it('keeps every repeated --repo', () => {
+    const cfg = load(['--repo', '/a', '--repo', '/b/New project', '--repo', '/c,/d']);
+    expect(cfg.repos).toEqual(['/a', '/b/New project', '/c', '/d']);
+  });
+
   it('reads lead read commands as a comma list or a config.json array', () => {
     home = tempDir();
     const read = (args: string[], env = {}) => loadConfig(['--home', home!, ...args], env).claude.leadReadCommands;
