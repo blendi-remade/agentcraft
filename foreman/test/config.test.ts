@@ -26,6 +26,14 @@ describe('loadConfig argument checking', () => {
     expect(cfg.notify).toBe(false);
   });
 
+  it('turns Claude in Chrome on with --chrome and reads an MCP config file', () => {
+    expect(load([]).claude.chrome).toBe(false);
+    expect(load(['--chrome']).claude.chrome).toBe(true);
+    const file = path.join(tempDir(), 'mcp.json');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { blender: { command: 'uvx', args: ['blender-mcp'] } } }));
+    expect(Object.keys(load(['--mcp-config', file]).claude.mcpServers)).toEqual(['blender']);
+  });
+
   it('reads lead read commands as a comma list or a config.json array', () => {
     home = tempDir();
     const read = (args: string[], env = {}) => loadConfig(['--home', home!, ...args], env).claude.leadReadCommands;

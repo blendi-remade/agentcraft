@@ -4,6 +4,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { readJson } from './util/fsx.js';
 import type { BackendName } from './protocol.js';
+import { loadMcpServers, type McpServers } from './mcpconfig.js';
 import { defaultUserName } from './user.js';
 import type { EffortLevel } from '@anthropic-ai/claude-agent-sdk';
 
@@ -38,6 +39,10 @@ export interface ClaudeConfig {
   useClaudeLogin: boolean;
   /** command prefixes the lead runs without asking, e.g. `bd show` */
   leadReadCommands: string[];
+  /** Claude in Chrome for agents (needs useClaudeLogin; every browser action still asks in game) */
+  chrome: boolean;
+  /** your own MCP servers, added next to AgentCraft's (calls still go through the policy) */
+  mcpServers: McpServers;
 }
 
 export type EngineName = 'claude' | 'codex';
@@ -207,7 +212,7 @@ export const KNOWN_FLAGS = new Set([
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
   'ambient', 'lead-read-commands', 'lead-engine', 'worker-engine', 'engines', 'codex-path', 'codex-model', 'codex-lead-model',
-  'codex-worker-model', 'codex-effort', 'codex-lead-effort',
+  'codex-worker-model', 'codex-effort', 'codex-lead-effort', 'mcp-config', 'chrome',
 ]);
 
 function engineName(v: unknown, d: EngineName, what: string): EngineName {
@@ -310,6 +315,8 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
       leadReadCommands: readCommands(flags['lead-read-commands'] ?? env.AGENTCRAFT_LEAD_READ_COMMANDS ?? fileClaude.leadReadCommands),
+      chrome: bool(flags.chrome ?? env.AGENTCRAFT_CHROME ?? fileClaude.chrome, false),
+      mcpServers: loadMcpServers(str(flags['mcp-config']) ?? str(env.AGENTCRAFT_MCP_CONFIG) ?? str(fileClaude.mcpConfig)),
     },
     codex: {
       path: str(flags['codex-path']) ?? str(env.AGENTCRAFT_CODEX_PATH) ?? str(fileCodex.path),
@@ -373,6 +380,11 @@ usage: npm run start -- [options]
                            AGENTCRAFT_USE_CLAUDE_LOGIN=1, config.json claude.useClaudeLogin)
   --model <m>              model for lead and workers (default lead: opus, workers: sonnet)
   --lead-model <m> / --worker-model <m>
+  --chrome                 give agents Claude in Chrome (your paired browser). Needs --use-claude-login
+                           (env AGENTCRAFT_CHROME=1, config.json claude.chrome). Each action asks in game
+  --mcp-config <file>      your MCP servers for Claude agents, Claude Code .mcp.json shape (default
+                           ~/.agentcraft/mcp.json if it exists; env AGENTCRAFT_MCP_CONFIG, config.json
+                           claude.mcpConfig). Each tool call asks in game until you "Always allow" it
   --effort low|medium|high|xhigh|max   (default medium)
   --max-turns <n>          turn cap per session run (default lead 40 / worker 80)
   --workers <n|ids>        team size or comma list (default juniper,kit,wren)

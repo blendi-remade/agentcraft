@@ -79,6 +79,9 @@ export async function main(argv: string[]): Promise<void> {
   await claimRunFiles(cfg.home, cfg.dataDir, { pid: process.pid, port: server.port, host: cfg.host, backend: cfg.backend, profile: cfg.profile, version: FOREMAN_VERSION, startedAt: new Date().toISOString() });
 
   log.info(`AgentCraft Foreman ${FOREMAN_VERSION} | backend ${cfg.backend} | ws://${cfg.host}:${server.port} | state ${cfg.dataDir}`);
+  const mcpNames = Object.keys(cfg.claude.mcpServers);
+  if (mcpNames.length) log.info(`your MCP servers for Claude agents: ${mcpNames.join(', ')}`);
+  if (cfg.claude.chrome) log[cfg.claude.useClaudeLogin ? 'info' : 'warn'](cfg.claude.useClaudeLogin ? 'Claude in Chrome: on' : 'Claude in Chrome needs --use-claude-login; it stays off with an API key');
 
   let shuttingDown = false;
   const shutdown = async (sig: string) => {

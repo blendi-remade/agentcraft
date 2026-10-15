@@ -77,7 +77,7 @@ export class ClaudeEngine implements Engine {
       tools: role === 'lead' ? ['Read', 'Grep', 'Glob', 'Bash'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
       // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
       disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
-      mcpServers: { [MCP_SERVER]: mcpServer(spec.tools) },
+      mcpServers: { ...this.cfg.mcpServers, [MCP_SERVER]: mcpServer(spec.tools) },
       systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.instructions },
       abortController: abort,
       env: withAuthMode(spec.env, this.cfg.useClaudeLogin),
@@ -89,6 +89,8 @@ export class ClaudeEngine implements Engine {
         spec.onProcess(child);
         return child;
       },
+      // Claude in Chrome only loads on a claude.ai login; its tools go through the policy like any MCP tool
+      ...(this.cfg.chrome && this.cfg.useClaudeLogin ? { extraArgs: { chrome: null } } : {}),
       ...(spec.resume ? { resume: spec.resume } : {}),
       ...(this.cfg.maxBudgetUsdPerTurn ? { maxBudgetUsd: this.cfg.maxBudgetUsdPerTurn } : {}),
     };
