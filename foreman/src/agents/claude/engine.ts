@@ -1,13 +1,14 @@
 // The Claude engine: one Claude Agent SDK `query()` per turn. We spawn the CLI ourselves (same as
 // the SDK's local spawn) so its pid is known and a stopped turn's whole process tree can be ended.
 import { spawn } from 'node:child_process';
-import { query, type CanUseTool, type Options } from '@anthropic-ai/claude-agent-sdk';
+import { query, type CanUseTool, type McpServerConfig, type Options } from '@anthropic-ai/claude-agent-sdk';
 import type { ClaudeConfig } from '../../config.js';
 import type { Foreman } from '../../foreman.js';
 import type { AuthCheck, Engine, Role, TurnSpec, TurnStats } from '../engine.js';
 import { detectApiAuth, NO_API_AUTH_MESSAGE, withAuthMode } from './auth.js';
 import { StreamMapper } from './stream.js';
 import { MCP_SERVER, mcpServer } from './tools.js';
+import { claudeMcpServers } from '../../skills.js';
 
 export class ClaudeEngine implements Engine {
   readonly id = 'claude' as const;
@@ -19,8 +20,8 @@ export class ClaudeEngine implements Engine {
     private queryFn: typeof query = query,
   ) {}
 
-  model(role: Role): string {
-    return role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
+  model(role: Role, agentId?: string): string {
+    return (agentId && this.fm.config.agentModels[agentId]) || (role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel);
   }
 
   authFailedMessage(detail: string): string {
@@ -59,6 +60,14 @@ export class ClaudeEngine implements Engine {
     }
   }
 
+  /** Your own Claude Code MCP servers that `mcp` names, read fresh each turn (stdio/http specs as written). */
+  private pickedMcp(): Record<string, McpServerConfig> {
+    const choice = this.cfg.mcp;
+    if (choice !== 'all' && !choice.length) return {};
+    const found = claudeMcpServers(this.fm.repos.list().map((r) => r.path));
+    return Object.fromEntries(found.filter((s) => s.spec && (choice === 'all' || choice.includes(s.name))).map((s) => [s.name, s.spec as McpServerConfig]));
+  }
+
   async runTurn(spec: TurnSpec): Promise<TurnStats> {
     const { agentId, role, cwd, abort } = spec;
     const canUseTool: CanUseTool = async (toolName, input, opts) => {
@@ -67,17 +76,21 @@ export class ClaudeEngine implements Engine {
     };
     const options: Options = {
       cwd,
-      model: this.model(role),
+      model: this.model(role, agentId),
       effort: role === 'lead' ? this.cfg.leadEffort : this.cfg.effort,
       maxTurns: role === 'lead' ? this.cfg.maxTurnsLead : this.cfg.maxTurnsWorker,
-      settingSources: [],
+      // your own ~/.claude (skills, CLAUDE.md, user MCP servers) only when you turned it on
+      settingSources: this.cfg.userSettings ? ['user'] : [],
       permissionMode: 'default',
       canUseTool,
+      ...(this.cfg.skills !== 'off' ? { skills: this.cfg.skills } : {}),
+      ...(this.cfg.plugins.length ? { plugins: this.cfg.plugins.map((p) => ({ type: 'local' as const, path: p })) } : {}),
       // the lead's Bash is read-only: the policy asks before anything that writes
       tools: role === 'lead' ? ['Read', 'Grep', 'Glob', 'Bash'] : ['Read', 'Grep', 'Glob', 'Edit', 'Write', 'Bash', 'TodoWrite'],
       // no allowedTools: every tool call (incl. our MCP tools) goes through canUseTool/policy
       disallowedTools: ['Bash(git push:*)', 'Task', 'Agent', 'WebSearch', 'WebFetch'],
-      mcpServers: { [MCP_SERVER]: mcpServer(spec.tools) },
+      // the MCP servers you picked: their tools ask in game unless the server is in trustedMcp
+      mcpServers: { ...this.pickedMcp(), ...this.cfg.mcpServers, [MCP_SERVER]: mcpServer(spec.tools) },
       systemPrompt: { type: 'preset', preset: 'claude_code', append: spec.instructions },
       abortController: abort,
       env: withAuthMode(spec.env, this.cfg.useClaudeLogin),

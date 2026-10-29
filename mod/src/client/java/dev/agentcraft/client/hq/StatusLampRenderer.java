@@ -18,6 +18,7 @@ import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
 import dev.agentcraft.client.world.StationRenderer;
 import dev.agentcraft.layout.Anchors;
+import dev.agentcraft.client.ui.Tr;
 import java.util.List;
 import java.util.Locale;
 import org.jspecify.annotations.Nullable;
@@ -181,21 +182,21 @@ public class StatusLampRenderer extends StationRenderer<StatusLampBlockEntity, S
 				lines = List.of(lines.get(0), lines.get(1), TextUtil.ellipsize(font, String.join(" ", lines.subList(2, lines.size())), TEXT_W));
 			}
 			s.goalLines = List.copyOf(lines);
-			s.line1 = done + " of " + total + " tasks done" + (doing > 0 ? "  ·  " + doing + " in progress" : "");
-			s.line2a = plural(working, "agent") + " working" + (review > 0 ? "  ·  " + review + " in review" : "");
-			s.line2b = waitingUser > 0 ? "  ·  " + waitingUser + " need" + (waitingUser == 1 ? "s" : "") + " you" : "";
+			s.line1 = done + Tr.t(" of ") + total + Tr.t(" tasks done") + (doing > 0 ? "  ·  " + doing + Tr.t(" in progress") : "");
+			s.line2a = plural(working, "agent") + Tr.t(" working") + (review > 0 ? "  ·  " + review + Tr.t(" in review") : "");
+			s.line2b = waitingUser > 0 ? "  ·  " + waitingUser + (waitingUser == 1 ? Tr.t(" needs you") : Tr.t(" need you")) : "";
 		} else {
 			s.progress = 0;
 			s.percent = "–";
 			s.statusWord = "NO GOAL";
 			s.statusColor = UiStyle.status("idle");
 			s.goalLines = List.of("What should the team", "work on?");
-			s.line1 = "Press ` and type a goal";
-			s.line2a = st == null || !st.hasData() ? "Foreman not connected" : plural(onShift, "agent") + " on shift";
+			s.line1 = Tr.t("Press ` and type a goal");
+			s.line2a = st == null || !st.hasData() ? Tr.t("Foreman not connected") : plural(onShift, "agent") + Tr.t(" on shift");
 			s.line2b = "";
 		}
 		if (s.stale && st != null && st.hasData()) {
-			s.line2a = "Foreman offline · last known state";
+			s.line2a = Tr.t("Foreman offline · last known state");
 			s.line2b = "";
 		}
 		int w = Math.max(font.width(s.line1), font.width(s.line2a) + font.width(s.line2b));

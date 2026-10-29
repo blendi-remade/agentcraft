@@ -12,6 +12,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -86,9 +87,9 @@ public final class Toasts implements HudElement {
 			}
 		}
 		String title = switch (n.level()) {
-			case NEED_USER -> (agentId != null ? UiBits.agentName(agentId) : "Your team") + " needs you";
-			case WARN -> agentId != null ? UiBits.agentName(agentId) : "Heads up";
-			default -> agentId != null ? UiBits.agentName(agentId) : "Foreman";
+			case NEED_USER -> (agentId != null ? UiBits.agentName(agentId) : Tr.t("Your team")) + Tr.t(" needs you");
+			case WARN -> agentId != null ? UiBits.agentName(agentId) : Tr.t("Heads up");
+			default -> agentId != null ? UiBits.agentName(agentId) : Tr.t("Foreman");
 		};
 		long life = switch (n.level()) {
 			case NEED_USER -> 9000;

@@ -14,6 +14,7 @@ import dev.agentcraft.client.console.ConsoleCommands.Message;
 import dev.agentcraft.client.console.ConsoleCommands.RepoAdd;
 import dev.agentcraft.client.console.ConsoleCommands.Repos;
 import dev.agentcraft.client.console.ConsoleCommands.ShowDiff;
+import dev.agentcraft.client.console.ConsoleCommands.Lang;
 import dev.agentcraft.client.console.ConsoleCommands.Sound;
 import dev.agentcraft.client.console.ConsoleCommands.Status;
 import dev.agentcraft.client.console.ConsoleCommands.TaskAction;
@@ -31,6 +32,7 @@ import dev.agentcraft.client.foreman.Protocol.Task;
 import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.hud.HudSounds;
 import dev.agentcraft.client.hud.UiBits;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -136,8 +138,17 @@ public final class ConsoleActions {
 					HudSounds.setEnabled(so.on());
 				}
 				String state = HudSounds.enabled() ? "on" : "off";
-				String why = HudSounds.forcedMute() ? " (the game was started muted: AGENTCRAFT_MUTE=1)" : "";
-				ConsoleLog.add(Tone.INFO, "Decision bell and done chime: " + state + why);
+				String why = HudSounds.forcedMute() ? Tr.t(" (the game was started muted: AGENTCRAFT_MUTE=1)") : "";
+				ConsoleLog.add(Tone.INFO, Tr.t("Decision bell and done chime: ") + state + why);
+				clearFeedback();
+				return After.CLEAR;
+			}
+			case Lang l -> {
+				ConsoleLog.remember(raw);
+				if (l.code() != null) {
+					Tr.setLanguage(l.code());
+				}
+				ConsoleLog.add(Tone.INFO, Tr.t("Language: ") + Tr.language() + Tr.t(" (some labels change after a restart)"));
 				clearFeedback();
 				return After.CLEAR;
 			}
@@ -155,7 +166,7 @@ public final class ConsoleActions {
 					return After.CLOSE;
 				}
 				// no diff screen in this build: print a summary into the console
-				setFeedback("fetching the diff of " + d.worktree() + "\u2026", Tone.INFO, true);
+				setFeedback(Tr.t("fetching the diff of ") + d.worktree() + "\u2026", Tone.INFO, true);
 				DiffLink.summary(d.repoId(), d.worktree()).thenAccept(lines -> {
 					for (DiffLink.SummaryLine l : lines) {
 						if (l.header() || l.error()) {
@@ -166,7 +177,7 @@ public final class ConsoleActions {
 							ConsoleLog.add(Tone.INFO, l.text());
 						}
 					}
-					setFeedback("diff of " + d.worktree() + " below", Tone.OK, false);
+					setFeedback(Tr.t("diff of ") + d.worktree() + Tr.t(" below"), Tone.OK, false);
 				});
 				return After.CLEAR;
 			}
@@ -174,7 +185,7 @@ public final class ConsoleActions {
 			}
 		}
 		if (!Foreman.connected()) {
-			setFeedback("Foreman offline: nothing was sent (it reconnects by itself)", Tone.ERROR, false);
+			setFeedback(Tr.t("Foreman offline: nothing was sent (it reconnects by itself)"), Tone.ERROR, false);
 			return After.KEEP;
 		}
 		ConsoleLog.remember(raw);
@@ -182,23 +193,23 @@ public final class ConsoleActions {
 		switch (in) {
 			case Goal g -> track(Foreman.submitGoal(g.text(), g.repoId()), raw, restore, ack -> {
 				String gid = ack.result() != null && ack.result().has("goalId") ? ack.result().get("goalId").getAsString() : null;
-				return "goal " + (gid != null ? gid + " " : "") + "sent to Marlow" + (g.repoId() != null && s.repos().size() > 1 ? " \u2192 "
+				return Tr.t("goal ") + (gid != null ? gid + " " : "") + Tr.t("sent to Marlow") + (g.repoId() != null && s.repos().size() > 1 ? " \u2192 "
 					+ ConsoleCommands.repoName(g.repoId(), s) : "") + " " + UiBits.CHECK;
-			}, "sending the goal\u2026");
+			}, Tr.t("sending the goal\u2026"));
 			case Message m -> track(Foreman.message(m.to(), m.text()), raw, restore,
-				ack -> "sent to " + ConsoleCommands.displayName(m.to(), s) + " " + UiBits.CHECK, "sending to " + ConsoleCommands.displayName(m.to(), s) + "\u2026");
+				ack -> Tr.t("sent to ") + ConsoleCommands.displayName(m.to(), s) + " " + UiBits.CHECK, Tr.t("sending to ") + ConsoleCommands.displayName(m.to(), s) + "\u2026");
 			case Answer a -> {
 				String did = a.decision().id();
 				DecisionsFeature.markAnswering(did);
 				// a refused answer must show up again on the HUD badge and the podium at once
 				track(Foreman.answer(did, a.option(), a.text()), raw, restore,
-					ack -> "answered " + did + (a.option() != null ? ": " + a.option() : "") + " " + UiBits.CHECK, "answering " + did + "\u2026",
+					ack -> Tr.t("answered ") + did + (a.option() != null ? ": " + a.option() : "") + " " + UiBits.CHECK, Tr.t("answering ") + did + "\u2026",
 					() -> DecisionsFeature.unmarkAnswering(did));
 			}
 			case RepoAdd r -> track(Foreman.addRepo(r.path()), raw, restore, ack -> {
 				String rid = ack.result() != null && ack.result().has("repoId") ? ack.result().get("repoId").getAsString() : null;
-				return "repo " + (rid != null ? rid + " " : "") + "added " + UiBits.CHECK;
-			}, "adding the repo\u2026");
+				return Tr.t("repo ") + (rid != null ? rid + " " : "") + Tr.t("added ") + UiBits.CHECK;
+			}, Tr.t("adding the repo\u2026"));
 			case AgentAction a -> {
 				List<CompletableFuture<Ack>> all = new ArrayList<>();
 				for (String id : a.agentIds()) {
@@ -213,8 +224,8 @@ public final class ConsoleActions {
 					}
 					return all.get(0).join();
 				});
-				String who = a.agentIds().size() == 1 ? ConsoleCommands.displayName(a.agentIds().get(0), s) : a.agentIds().size() + " agents";
-				track(combined, raw, restore, ack -> pastTense(a.action()) + " " + who + (a.arg() != null ? " on " + a.arg() : "") + " " + UiBits.CHECK,
+				String who = a.agentIds().size() == 1 ? ConsoleCommands.displayName(a.agentIds().get(0), s) : a.agentIds().size() + Tr.t(" agents");
+				track(combined, raw, restore, ack -> pastTense(a.action()) + " " + who + (a.arg() != null ? Tr.t(" on ") + a.arg() : "") + " " + UiBits.CHECK,
 					a.action() + " " + who + "\u2026");
 			}
 			case TaskAction t -> track(Foreman.taskAction(t.taskId(), t.action(), t.arg()), raw, restore,
@@ -233,6 +244,7 @@ public final class ConsoleActions {
 			case "resume" -> "resumed";
 			case "stop" -> "stopped";
 			case "spawn" -> "spawned";
+			case "nudge" -> "nudged";
 			case "cancel" -> "cancelled";
 			case "retry" -> "retried";
 			case "prioritize" -> "prioritized";
@@ -265,7 +277,7 @@ public final class ConsoleActions {
 				Throwable c = err instanceof CompletionException && err.getCause() != null ? err.getCause() : err;
 				msg = c.getMessage() != null ? c.getMessage() : c.getClass().getSimpleName();
 			} else {
-				msg = ack == null ? "no answer from the Foreman" : ack.error() != null ? ack.error() : "the Foreman refused it";
+				msg = ack == null ? Tr.t("no answer from the Foreman") : ack.error() != null ? ack.error() : Tr.t("the Foreman refused it");
 			}
 			setFeedback(msg, Tone.ERROR, false);
 			ConsoleLog.add(Tone.ERROR, UiBits.CROSS + " " + ConsoleCommands.oneLine(raw, 60) + ": " + msg);
@@ -279,33 +291,33 @@ public final class ConsoleActions {
 	// ------------------------------------------------------------------ local commands
 
 	private static void help(@Nullable String topic) {
-		ConsoleLog.add(Tone.HEADER, "Console");
-		ConsoleLog.add(Tone.HELP, "plain text\ta new goal for Marlow (several repos: you pick one)");
-		ConsoleLog.add(Tone.HELP, "@juniper text\tmessage an agent (Tab completes, @all = everyone)");
+		ConsoleLog.add(Tone.HEADER, Tr.t("Console"));
+		ConsoleLog.add(Tone.HELP, Tr.t("plain text\ta new goal for Marlow (several repos: you pick one)"));
+		ConsoleLog.add(Tone.HELP, Tr.t("@juniper text\tmessage an agent (Tab completes, @all = everyone)"));
 		for (Command c : ConsoleCommands.COMMANDS) {
 			if (topic == null || c.name().startsWith(topic)) {
 				ConsoleLog.add(Tone.HELP, c.usage() + "\t" + c.help());
 			}
 		}
-		ConsoleLog.add(Tone.INFO, "Enter send \u00b7 Shift+Enter new line \u00b7 \u2191\u2193 history \u00b7 Tab complete \u00b7 "
-			+ dev.agentcraft.client.hud.Keys.label(dev.agentcraft.client.hud.Keys.decisions) + " decisions \u00b7 Esc close (your draft is kept)");
+		ConsoleLog.add(Tone.INFO, Tr.t("Enter send \u00b7 Shift+Enter new line \u00b7 \u2191\u2193 history \u00b7 Tab complete \u00b7 ")
+			+ dev.agentcraft.client.hud.Keys.label(dev.agentcraft.client.hud.Keys.decisions) + Tr.t(" decisions \u00b7 Esc close (your draft is kept)"));
 	}
 
 	private static void status(ForemanState s) {
-		ConsoleLog.add(Tone.HEADER, "Status");
+		ConsoleLog.add(Tone.HEADER, Tr.t("Status"));
 		if (!s.hasData()) {
-			ConsoleLog.add(Tone.ERROR, "no data from the Foreman yet");
+			ConsoleLog.add(Tone.ERROR, Tr.t("no data from the Foreman yet"));
 			return;
 		}
 		if (s.isStale()) {
-			ConsoleLog.add(Tone.ERROR, "Foreman offline: this is the last known state");
+			ConsoleLog.add(Tone.ERROR, Tr.t("Foreman offline: this is the last known state"));
 		}
 		var g = s.goal();
 		if (g != null) {
-			ConsoleLog.add(Tone.INFO, "goal " + g.id() + " (" + g.status().wire() + ", " + Math.round(g.progress() * 100) + "%): "
+			ConsoleLog.add(Tone.INFO, Tr.t("goal ") + g.id() + " (" + g.status().wire() + ", " + Math.round(g.progress() * 100) + "%): "
 				+ ConsoleCommands.oneLine(g.text(), 90));
 		} else {
-			ConsoleLog.add(Tone.INFO, "no goal yet: type one and press Enter");
+			ConsoleLog.add(Tone.INFO, Tr.t("no goal yet: type one and press Enter"));
 		}
 		Map<TaskStatus, Integer> counts = new LinkedHashMap<>();
 		for (TaskStatus ts : List.of(TaskStatus.DOING, TaskStatus.REVIEW, TaskStatus.TODO, TaskStatus.BLOCKED, TaskStatus.DONE)) {
@@ -314,12 +326,12 @@ public final class ConsoleActions {
 		for (Task t : s.tasks().values()) {
 			counts.computeIfPresent(t.status(), (k, v) -> v + 1);
 		}
-		StringBuilder tb = new StringBuilder("tasks: ");
+		StringBuilder tb = new StringBuilder(Tr.t("tasks: "));
 		counts.forEach((k, v) -> tb.append(v).append(' ').append(k.wire()).append("  "));
 		ConsoleLog.add(Tone.INFO, tb.toString().strip());
 		String spend = spendLabel(s);
 		if (spend != null) {
-			ConsoleLog.add(Tone.INFO, "Claude API spend so far: " + spend + " (estimated, this profile)");
+			ConsoleLog.add(Tone.INFO, Tr.t("Claude API spend so far: ") + spend + Tr.t(" (estimated, this profile)"));
 		}
 		for (Agent a : s.agents().values()) {
 			String st = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.state().wire().replace('_', ' ');
@@ -328,7 +340,7 @@ public final class ConsoleActions {
 		}
 		List<Decision> open = DecisionQueue.open();
 		if (open.isEmpty()) {
-			ConsoleLog.add(Tone.OK, "no decisions waiting");
+			ConsoleLog.add(Tone.OK, Tr.t("no decisions waiting"));
 		} else {
 			for (Decision d : open) {
 				ConsoleLog.add(Tone.INFO, d.id() + " " + DecisionQueue.kindLabel(d.kind()) + ": " + ConsoleCommands.oneLine(d.question(), 80), d.agentId());
@@ -346,15 +358,15 @@ public final class ConsoleActions {
 	}
 
 	private static void repos(ForemanState s) {
-		ConsoleLog.add(Tone.HEADER, "Repos");
+		ConsoleLog.add(Tone.HEADER, Tr.t("Repos"));
 		if (s.repos().isEmpty()) {
 			String example = System.getProperty("os.name", "").toLowerCase(java.util.Locale.ROOT).contains("win")
 				? "C:\\path\\to\\repo" : "/path/to/repo";
-			ConsoleLog.add(Tone.INFO, "none yet: /repo add " + example);
+			ConsoleLog.add(Tone.INFO, Tr.t("none yet: /repo add ") + example);
 			return;
 		}
 		for (Repo r : s.repos().values()) {
-			ConsoleLog.add(Tone.INFO, r.name() + " \u00b7 " + r.branch() + (r.head() != null ? " @ " + r.head() : "") + (r.dirty() ? " \u00b7 uncommitted changes"
+			ConsoleLog.add(Tone.INFO, r.name() + " \u00b7 " + r.branch() + (r.head() != null ? " @ " + r.head() : "") + (r.dirty() ? Tr.t(" \u00b7 uncommitted changes")
 				: "") + " \u00b7 " + r.path());
 		}
 	}

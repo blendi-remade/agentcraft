@@ -21,6 +21,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -114,7 +115,7 @@ public class ConsoleScreen extends Screen {
 	}
 
 	public ConsoleScreen(@Nullable String prefill) {
-		super(Component.literal("Console"));
+		super(Component.literal(Tr.t("Console")));
 		if (prefill != null) {
 			input.set(prefill);
 		} else if (!ConsoleLog.draft().isEmpty()) {
@@ -558,12 +559,12 @@ public class ConsoleScreen extends Screen {
 			}
 		} else if (pendingGoal != null) {
 			Repo r = pendingGoal.choices().get(Math.max(0, Math.min(repoSel, pendingGoal.choices().size() - 1)));
-			hint = "new goal \u2192 " + r.name();
+			hint = Tr.t("new goal \u2192 ") + r.name();
 		} else if (intent != null) {
 			ForemanState s = Foreman.state();
 			if (s != null && s.hasData() && s.isStale() && sendsToForeman(intent)) {
 				// say it before Enter, not after
-				hint = "Foreman offline: this can't be sent yet";
+				hint = Tr.t("Foreman offline: this can't be sent yet");
 				hintColor = UiBits.errorText();
 			} else if (intent instanceof Invalid inv) {
 				hint = errorStripVisible() ? null : inv.error();
@@ -571,7 +572,7 @@ public class ConsoleScreen extends Screen {
 				hint = ConsoleCommands.describe(intent, s);
 			}
 		}
-		String placeholder = "Type a goal, @agent to message, or /help";
+		String placeholder = Tr.t("Type a goal, @agent to message, or /help");
 		return new TextFieldView.Style(">", UiStyle.BRASS, placeholder, ghostText(), hint, hintColor, 6);
 	}
 
@@ -629,10 +630,10 @@ public class ConsoleScreen extends Screen {
 		int y = panelY + p.top();
 
 		// header: title + link summary, roster on the right
-		g.text(font, "Console", x, y + 5, UiBits.ink(), false);
+		g.text(font, Tr.t("Console"), x, y + 5, UiBits.ink(), false);
 		String sub = headerSub(s);
 		int rosterW = rosterWidth(s);
-		g.text(font, TextUtil.ellipsize(font, sub, w - font.width("Console") - 10 - rosterW), x + font.width("Console") + 6, y + 5, UiBits.muted(), false);
+		g.text(font, TextUtil.ellipsize(font, sub, w - font.width(Tr.t("Console")) - 10 - rosterW), x + font.width(Tr.t("Console")) + 6, y + 5, UiBits.muted(), false);
 		drawRoster(g, s, x + w - rosterW + 2, y, mouseX, mouseY);
 		y += 20;
 		g.fill(x, y, x + w, y + 1, UiStyle.color("palette.ui.edge", 0xFFC9BBA3));
@@ -651,7 +652,7 @@ public class ConsoleScreen extends Screen {
 		int ly = listY + 4;
 		g.enableScissor(listX + 2, listY + 2, listX + listW - 2, listY + listH - 2);
 		if (rs.isEmpty()) {
-			String msg = s == null || !s.hasData() ? "Waiting for the Foreman…" : "Nothing yet. Type a goal below and press Enter.";
+			String msg = s == null || !s.hasData() ? Tr.t("Waiting for the Foreman…") : Tr.t("Nothing yet. Type a goal below and press Enter.");
 			g.text(font, msg, listX + 8, ly + 2, UiBits.muted(), false);
 		}
 		int textX0 = listX + 6;
@@ -693,7 +694,7 @@ public class ConsoleScreen extends Screen {
 		g.disableScissor();
 		Panels.scrollbar(g, listX + listW - 8, listY + 2, listH - 4, scroll, false);
 		if (!scroll.following() && scroll.scrollable()) {
-			String more = "↓ newer below";
+			String more = Tr.t("↓ newer below");
 			int mw = font.width(more) + 10;
 			Panels.sprite(g, Kit.PILL, listX + listW - 14 - mw, listY + listH - 15, mw, 11);
 			g.text(font, more, listX + listW - 14 - mw + 5, listY + listH - 13, UiBits.muted(), false);
@@ -706,8 +707,8 @@ public class ConsoleScreen extends Screen {
 		int fy = panelY + panelH - p.bottom() - footerH + 2;
 		String dk = Keys.label(Keys.decisions);
 		int waiting = DecisionsFeature.waitingCount();
-		String[] hints = waiting > 0 ? new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", dk, waiting + " waiting", "Esc", "close"}
-			: new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", "Shift+Enter", "new line", "Esc", "close"};
+		String[] hints = waiting > 0 ? new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", dk, waiting + Tr.t(" waiting"), "Esc", "close"}
+			: new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", "Shift+Enter", Tr.t("new line"), "Esc", "close"};
 		if (UiBits.hintsWidth(font, hints) > w) {
 			hints = new String[] {"Enter", "send", "Tab", "complete", "↑↓", "history", "Esc", "close"};
 		}
@@ -725,10 +726,10 @@ public class ConsoleScreen extends Screen {
 
 	private String headerSub(@Nullable ForemanState s) {
 		if (s == null || !s.hasData()) {
-			return "· connecting to the Foreman";
+			return Tr.t("· connecting to the Foreman");
 		}
 		if (s.isStale()) {
-			return "· Foreman offline (last known state)";
+			return Tr.t("· Foreman offline (last known state)");
 		}
 		int active = 0;
 		for (Agent a : s.agents().values()) {
@@ -736,9 +737,9 @@ public class ConsoleScreen extends Screen {
 				active++;
 			}
 		}
-		String repo = s.repos().size() == 1 ? s.repos().values().iterator().next().name() : s.repos().size() + " repos";
+		String repo = s.repos().size() == 1 ? s.repos().values().iterator().next().name() : s.repos().size() + Tr.t(" repos");
 		String spend = ConsoleActions.spendLabel(s);
-		return "· " + active + " on shift · " + repo + (spend != null ? " · " + spend : "");
+		return "· " + active + Tr.t(" on shift · ") + repo + (spend != null ? " · " + spend : "");
 	}
 
 	private int rosterWidth(@Nullable ForemanState s) {
@@ -781,9 +782,9 @@ public class ConsoleScreen extends Screen {
 		if (hovered != null) {
 			Agent a = s.agent(hovered);
 			if (a != null) {
-				String st = stale ? "last known: " + (a.isPaused() ? "paused" : a.activity()) : !a.isActive() ? "off shift" : a.isPaused() ? "paused"
+				String st = stale ? Tr.t("last known: ") + (a.isPaused() ? "paused" : a.activity()) : !a.isActive() ? Tr.t("off shift") : a.isPaused() ? "paused"
 					: a.activity();
-				g.setTooltipForNextFrame(font, Component.literal(a.name() + " · " + st + "  (click to message)"), mouseX, mouseY);
+				g.setTooltipForNextFrame(font, Component.literal(a.name() + " · " + st + Tr.t("  (click to message)")), mouseX, mouseY);
 			}
 		}
 	}
@@ -807,8 +808,8 @@ public class ConsoleScreen extends Screen {
 		int w = Math.max(panelW, Math.min(fieldW, 300));
 		Panels.panel(g, fieldX, y, w, h);
 		int x = fieldX + p.left();
-		g.text(font, "Which repo is this goal for?", x, y + p.top(), UiBits.ink(), false);
-		String hint = "Enter send · 1-" + pg.choices().size() + " pick · Esc back";
+		g.text(font, Tr.t("Which repo is this goal for?"), x, y + p.top(), UiBits.ink(), false);
+		String hint = Tr.t("Enter send · 1-") + pg.choices().size() + Tr.t(" pick · Esc back");
 		g.text(font, hint, fieldX + w - p.right() - font.width(hint), y + p.top(), UiBits.muted(), false);
 		int cx = x;
 		int cy = y + p.top() + 13;
@@ -955,7 +956,7 @@ public class ConsoleScreen extends Screen {
 				if (am.matches()) {
 					body = pastTense(am.group(2)) + " " + am.group(1) + am.group(3);
 				}
-				lead.add(new Run("You", UiStyle.CLAY_DARK));
+				lead.add(new Run(Tr.t("You"), UiStyle.CLAY_DARK));
 				lead.add(new Run(" ", ink));
 				agent = null;
 				stripe = UiStyle.CLAY;
@@ -1007,7 +1008,7 @@ public class ConsoleScreen extends Screen {
 					if (lead.isEmpty() && !yours) {
 						bodyColor = body.startsWith("Goal complete") ? UiBits.okText() : ink;
 					} else if (lead.isEmpty()) {
-						lead.add(new Run("You", UiStyle.CLAY_DARK));
+						lead.add(new Run(Tr.t("You"), UiStyle.CLAY_DARK));
 						if (kind == FeedKind.USER && l.to() != null && !UiBits.isUser(l.to())) {
 							lead.add(new Run(" \u2192 ", muted));
 							lead.add(new Run(l.to().equals("all") ? "everyone" : UiBits.agentName(l.to()), UiBits.nameOnLight(l.to())));

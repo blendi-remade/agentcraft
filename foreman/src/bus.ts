@@ -4,6 +4,7 @@ import type { FeedItem, FeedKind } from './protocol.js';
 import type { BusMessage } from './store.js';
 import { truncate } from './util/text.js';
 import { userName } from './user.js';
+import { localize } from './i18n.js';
 
 export class MessageBus {
   private listeners: Array<(m: BusMessage) => void> = [];
@@ -12,7 +13,9 @@ export class MessageBus {
 
   /** Append to the activity feed (persisted + broadcast). */
   feed(kind: FeedKind, text: string, extra: { agentId?: string; to?: string } = {}): FeedItem {
-    const item: FeedItem = { ts: this.ctx.now(), kind, text: truncate(text, 400) };
+    // the Foreman's own lines in the user's language; what agents and the user wrote stays as written
+    const own = kind !== 'message' && kind !== 'user';
+    const item: FeedItem = { ts: this.ctx.now(), kind, text: truncate(own ? localize(text) : text, 400) };
     if (extra.agentId) item.agentId = extra.agentId;
     if (extra.to) item.to = extra.to;
     this.ctx.store.pushFeed(item);

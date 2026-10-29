@@ -7,6 +7,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.gui.Font;
@@ -45,14 +46,14 @@ public final class PermissionBody {
 		if (cmd.size() > MAX_CMD_LINES) {
 			cmd = new ArrayList<>(cmd.subList(0, MAX_CMD_LINES));
 		}
-		String why = info.reason() != null ? info.reason() : "the Foreman asks before running this";
+		String why = info.reason() != null ? info.reason() : Tr.t("the Foreman asks before running this");
 		List<FormattedCharSequence> reason = TextUtil.wrap(font, why, w - 34);
 		if (reason.size() > 3) {
 			reason = new ArrayList<>(reason.subList(0, 3));
 		}
 		String name = UiBits.agentName(d.agentId());
 		String coversText = info.covers() != null && !info.covers().isEmpty() ? info.covers()
-			: name + " can run exactly this again without asking";
+			: name + Tr.t(" can run exactly this again without asking");
 		List<FormattedCharSequence> covers = TextUtil.wrap(font, coversText, w - 16);
 		if (covers.size() > 3) {
 			covers = new ArrayList<>(covers.subList(0, 3));
@@ -97,7 +98,7 @@ public final class PermissionBody {
 		cy += wellH + 4;
 
 		// why it asks
-		g.text(font, "Why", x, cy + 4, muted, false);
+		g.text(font, Tr.t("Why"), x, cy + 4, muted, false);
 		ly = cy + 4;
 		for (FormattedCharSequence line : l.reason()) {
 			g.text(font, line, x + 30, ly, ink, false);
@@ -107,7 +108,7 @@ public final class PermissionBody {
 
 		// where
 		if (!l.cwd().isEmpty()) {
-			g.text(font, "In", x, cy + 1, muted, false);
+			g.text(font, Tr.t("In"), x, cy + 1, muted, false);
 			String cwd = l.cwd();
 			int max = w - 30;
 			if (font.width(cwd) > max) {
@@ -123,7 +124,7 @@ public final class PermissionBody {
 		Panels.divider(g, x, cy - 3, w);
 		// the "2" keycap ties this explanation to the "2 Always allow" button
 		UiBits.keycap(g, font, "2", x, cy);
-		g.text(font, "\"Always allow for this agent\" covers:", x + 16, cy + 2, muted, false);
+		g.text(font, Tr.t("\"Always allow for this agent\" covers:"), x + 16, cy + 2, muted, false);
 		ly = cy + 12;
 		for (FormattedCharSequence line : l.covers()) {
 			g.text(font, line, x + 16, ly, ink, false);

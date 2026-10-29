@@ -5,6 +5,7 @@ import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.Diff;
 import dev.agentcraft.client.foreman.Protocol.DiffFile;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.CompletableFuture;
@@ -66,7 +67,7 @@ public final class DiffLink {
 		return Foreman.requestDiff(repoId, worktree).handle((diff, err) -> {
 			List<SummaryLine> out = new ArrayList<>();
 			if (err != null || diff == null) {
-				String msg = err == null ? "no diff" : err.getCause() != null ? err.getCause().getMessage() : err.getMessage();
+				String msg = err == null ? Tr.t("no diff") : err.getCause() != null ? err.getCause().getMessage() : err.getMessage();
 				out.add(new SummaryLine("diff " + worktree + ": " + msg, false, true, 0, 0));
 				return out;
 			}
@@ -79,7 +80,7 @@ public final class DiffLink {
 				out.add(new SummaryLine(fileLine(f), false, false, f.additions(), f.deletions()));
 			}
 			if (diff.truncated()) {
-				out.add(new SummaryLine("(large diff: some hunks were cut)", false, false, 0, 0));
+				out.add(new SummaryLine(Tr.t("(large diff: some hunks were cut)"), false, false, 0, 0));
 			}
 			return out;
 		});
@@ -87,17 +88,17 @@ public final class DiffLink {
 
 	public static String header(Diff diff) {
 		String br = diff.branch() != null ? diff.branch() : diff.worktree();
-		return br + (diff.base() != null ? " → " + diff.base() : "") + ": " + diff.stats().files() + (diff.stats().files() == 1 ? " file" : " files")
+		return br + (diff.base() != null ? " → " + diff.base() : "") + ": " + diff.stats().files() + (diff.stats().files() == 1 ? Tr.t(" file") : Tr.t(" files"))
 			+ ", +" + diff.stats().additions() + " −" + diff.stats().deletions();
 	}
 
 	public static String fileLine(DiffFile f) {
 		String st = switch (f.status()) {
-			case ADDED -> "new ";
-			case DELETED -> "deleted ";
-			case RENAMED -> "renamed ";
+			case ADDED -> Tr.t("new ");
+			case DELETED -> Tr.t("deleted ");
+			case RENAMED -> Tr.t("renamed ");
 			default -> "";
 		};
-		return st + f.path() + (f.binary() ? " (binary)" : "");
+		return st + f.path() + (f.binary() ? Tr.t(" (binary)") : "");
 	}
 }

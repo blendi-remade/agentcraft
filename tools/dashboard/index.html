@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="it">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AgentCraft Control</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Crect width='16' height='16' rx='3' fill='%23d97757'/%3E%3Crect x='4' y='4' width='8' height='8' fill='%23fffbf4'/%3E%3C/svg%3E">
+<link rel="stylesheet" href="style.css">
+<script>window.AC_TOKEN = '__AC_TOKEN__';</script>
+</head>
+<body>
+<header class="topbar">
+  <div class="brand"><span class="logo"></span><b>AgentCraft</b> <span class="muted" data-i18n="control">Control</span></div>
+  <div class="pills" id="pills"></div>
+  <div class="top-actions">
+    <button class="btn small" id="btn-start-all" data-i18n="startAll">Avvia tutto</button>
+    <button class="btn small ghost" id="btn-stop-all" data-i18n="stopAll">Ferma tutto</button>
+    <select id="lang" class="small" aria-label="Language">
+      <option value="it">IT</option>
+      <option value="en">EN</option>
+    </select>
+  </div>
+</header>
+<div class="banner" id="banner" hidden></div>
+<div class="layout">
+  <nav class="sidebar" id="nav">
+    <button data-view="chat" class="active"><span data-i18n="nav.chat">Chat</span></button>
+    <button data-view="agents"><span data-i18n="nav.agents">Agenti</span><i class="count" id="cnt-agents"></i></button>
+    <button data-view="tasks"><span data-i18n="nav.tasks">Task</span><i class="count" id="cnt-tasks"></i></button>
+    <button data-view="decisions"><span data-i18n="nav.decisions">Decisioni</span><i class="count warn" id="cnt-decisions"></i></button>
+    <button data-view="browser"><span data-i18n="nav.browser">Browser</span><i class="count" id="cnt-urls"></i></button>
+    <button data-view="permissions"><span data-i18n="nav.permissions">Permessi</span></button>
+    <button data-view="memory"><span data-i18n="nav.memory">Memoria</span></button>
+    <button data-view="repos"><span data-i18n="nav.repos">Repo</span></button>
+    <button data-view="services"><span data-i18n="nav.services">Servizi</span></button>
+    <button data-view="settings"><span data-i18n="nav.settings">Impostazioni</span></button>
+  </nav>
+  <main id="main">
+    <!-- chat -->
+    <section class="view" id="view-chat">
+      <div class="goalbar" id="goalbar"></div>
+      <div class="chat-log" id="chat-log"></div>
+      <div class="chat-decisions" id="chat-decisions"></div>
+      <form class="composer" id="composer">
+        <select id="chat-target" aria-label="To"></select>
+        <textarea id="chat-input" rows="2" data-i18n-ph="chat.placeholder"></textarea>
+        <button class="btn primary" type="submit" data-i18n="send">Invia</button>
+      </form>
+      <div class="hint muted" data-i18n="chat.hint"></div>
+    </section>
+
+    <!-- agents -->
+    <section class="view" id="view-agents" hidden>
+      <div class="split">
+        <div class="cards" id="agent-cards"></div>
+        <div class="panel monitor">
+          <div class="panel-head"><b id="monitor-title" data-i18n="monitor">Monitor</b><span class="muted" id="monitor-sub"></span></div>
+          <div class="log" id="monitor-log"></div>
+          <form class="inline-form" id="agent-msg-form">
+            <input id="agent-msg" data-i18n-ph="agent.msg.placeholder">
+            <button class="btn small" data-i18n="send">Invia</button>
+          </form>
+        </div>
+      </div>
+    </section>
+
+    <!-- tasks -->
+    <section class="view" id="view-tasks" hidden>
+      <div class="kanban" id="kanban"></div>
+    </section>
+
+    <!-- decisions -->
+    <section class="view" id="view-decisions" hidden>
+      <div id="decision-list"></div>
+      <div class="panel" id="diff-panel" hidden>
+        <div class="panel-head"><b data-i18n="diff">Diff</b><span class="muted" id="diff-sub"></span><button class="btn small ghost" id="diff-close">✕</button></div>
+        <div id="diff-body" class="diff"></div>
+      </div>
+    </section>
+
+    <!-- browser -->
+    <section class="view" id="view-browser" hidden>
+      <form class="urlbar" id="urlbar">
+        <input id="url" placeholder="http://localhost:5173">
+        <button class="btn small" data-i18n="open">Apri</button>
+        <a class="btn small ghost" id="url-newtab" target="_blank" rel="noopener" data-i18n="newTab">Nuova scheda</a>
+      </form>
+      <div class="found" id="found-urls"></div>
+      <div class="frame-wrap"><iframe id="frame" title="browser" referrerpolicy="no-referrer"></iframe></div>
+      <div class="hint muted" data-i18n="browser.hint"></div>
+    </section>
+
+    <!-- permissions -->
+    <section class="view" id="view-permissions" hidden>
+      <div class="panel">
+        <div class="panel-head"><b data-i18n="p.mode">Modalità permessi</b></div>
+        <label class="switch"><input type="checkbox" id="allow-all"><span data-i18n="p.allowAll">Consenti tutto: gli agenti non chiedono più il permesso</span></label>
+        <div class="hint muted" data-i18n="p.allowAllHint"></div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b data-i18n="p.rules">Regole "Consenti sempre"</b><button class="btn small ghost danger" id="rules-clear" data-i18n="p.clearAll">Revoca tutte</button></div>
+        <div id="rules"></div>
+      </div>
+    </section>
+
+    <!-- memory -->
+    <section class="view" id="view-memory" hidden>
+      <div class="split">
+        <div class="list" id="memory-list"></div>
+        <div class="panel"><pre class="md" id="memory-body"></pre></div>
+      </div>
+    </section>
+
+    <!-- repos -->
+    <section class="view" id="view-repos" hidden>
+      <form class="inline-form" id="repo-add-form">
+        <input id="repo-path" data-i18n-ph="repo.path">
+        <button class="btn small" data-i18n="repo.add">Aggiungi repo</button>
+      </form>
+      <div id="repo-list"></div>
+    </section>
+
+    <!-- services -->
+    <section class="view" id="view-services" hidden>
+      <div class="grid2">
+        <div class="panel">
+          <div class="panel-head"><b>Foreman</b><span id="svc-foreman-state"></span></div>
+          <div class="kv" id="svc-foreman"></div>
+          <div class="row">
+            <button class="btn small primary" data-act="foreman/start" data-i18n="start">Avvia</button>
+            <button class="btn small" data-act="foreman/restart" data-i18n="restart">Riavvia</button>
+            <button class="btn small" data-act="foreman/reconnect" data-i18n="reconnect">Riconnetti</button>
+            <button class="btn small ghost" data-act="foreman/stop" data-i18n="stop">Ferma</button>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-head"><b>Minecraft</b><span id="svc-game-state"></span></div>
+          <div class="kv" id="svc-game"></div>
+          <div class="row">
+            <button class="btn small primary" data-act="game/start" data-i18n="start">Avvia</button>
+            <button class="btn small ghost" data-act="game/stop" data-i18n="stop">Ferma</button>
+          </div>
+        </div>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b data-i18n="launch">Avvio</b><span class="muted" data-i18n="launch.sub"></span></div>
+        <form id="launch-form" class="form">
+          <label><span data-i18n="f.backend">Backend</span>
+            <select name="backend"><option value="claude">claude</option><option value="codex">codex</option><option value="sim">sim (demo)</option></select></label>
+          <label><span data-i18n="f.repos">Repo (una per riga)</span><textarea name="repos" rows="2"></textarea></label>
+          <label><span data-i18n="f.profile">Profilo</span><input name="profile" placeholder="(backend)"></label>
+          <label><span data-i18n="f.workers">Worker</span><input name="workers" placeholder="juniper,kit,wren"></label>
+          <label><span data-i18n="f.model">Modello</span><input name="model" placeholder="opus / sonnet"></label>
+          <label><span data-i18n="f.extra">Argomenti extra Foreman</span><input name="extraArgs" placeholder="--effort low --max-concurrent 2"></label>
+          <label><span>Foreman port</span><input name="foremanPort" type="number"></label>
+          <label><span>DevBridge port</span><input name="devPort" type="number"></label>
+          <label class="check"><input type="checkbox" name="useClaudeLogin"><span data-i18n="f.claudeLogin">Usa il login di Claude Code</span></label>
+          <label class="check"><input type="checkbox" name="autostartForeman"><span data-i18n="f.autoForeman">Avvia il Foreman all'apertura</span></label>
+          <label class="check"><input type="checkbox" name="autostartGame"><span data-i18n="f.autoGame">Avvia anche Minecraft</span></label>
+          <label class="check"><input type="checkbox" name="dev"><span data-i18n="f.dev">Modalità silenziosa (muto, niente focus)</span></label>
+          <div class="row"><button class="btn primary" data-i18n="saveRestart">Salva e riavvia</button><button class="btn ghost" type="button" id="launch-save" data-i18n="save">Salva</button></div>
+        </form>
+      </div>
+      <div class="panel">
+        <div class="panel-head"><b data-i18n="logs">Log</b>
+          <select id="log-source"><option value="foreman">Foreman</option><option value="game">Minecraft</option><option value="system">Control</option></select>
+          <label class="check inline"><input type="checkbox" id="log-follow" checked><span data-i18n="follow">Segui</span></label>
+        </div>
+        <pre class="log tall" id="svc-log"></pre>
+      </div>
+    </section>
+
+    <!-- settings -->
+    <section class="view" id="view-settings" hidden>
+      <div class="panel">
+        <div class="panel-head"><b data-i18n="s.agents">Agenti</b><span class="muted" id="cfg-file"></span></div>
+        <form id="cfg-form" class="form">
+          <label><span data-i18n="s.language">Lingua degli agenti</span>
+            <select name="language"><option value="it">Italiano</option><option value="en">English</option></select></label>
+          <label><span data-i18n="s.userName">Il tuo nome</span><input name="userName"></label>
+          <label><span data-i18n="s.stallMinutes">Minuti senza attività = bloccato (0 = off)</span><input name="stallMinutes" type="number" min="0"></label>
+          <label><span data-i18n="s.stallAction">Agente bloccato</span>
+            <select name="stallAction"><option value="notify" data-i18n="s.notify">Avvisami</option><option value="nudge" data-i18n="s.nudge">Riavvia il turno da solo</option></select></label>
+          <div class="engines">
+            <div class="engine" data-engine="claude">
+              <div class="panel-head"><b>Claude</b><span class="tag" data-active-engine="claude" hidden data-i18n="s.inUse">in uso</span></div>
+              <div class="sub"><b data-i18n="s.skills">Skill</b> <span class="muted mono">~/.claude/skills · ~/.agents/skills</span> <span class="bulk" data-bulk="claude-skills"></span></div>
+              <div class="picks" id="claude-skills"></div>
+              <div class="sub"><b>MCP</b> <span class="muted mono">~/.claude.json · .mcp.json</span> <span class="bulk" data-bulk="claude-mcp"></span></div>
+              <div class="picks col" id="claude-mcp"></div>
+            </div>
+            <div class="engine" data-engine="codex">
+              <div class="panel-head"><b>Codex</b><span class="tag" data-active-engine="codex" hidden data-i18n="s.inUse">in uso</span></div>
+              <div class="sub"><b data-i18n="s.skills">Skill</b> <span class="muted mono">~/.codex/skills · ~/.agents/skills</span> <span class="bulk" data-bulk="codex-skills"></span></div>
+              <div class="picks" id="codex-skills"></div>
+              <div class="sub"><b>MCP</b> <span class="muted mono">~/.codex/config.toml</span> <span class="bulk" data-bulk="codex-mcp"></span></div>
+              <div class="picks col" id="codex-mcp"></div>
+            </div>
+          </div>
+          <h3 data-i18n="s.models">Modello per agente</h3>
+          <div class="models" id="agent-models"></div>
+          <datalist id="model-list"><option value="opus"><option value="sonnet"><option value="haiku"><option value="fable"></datalist>
+          <details class="adv">
+            <summary data-i18n="s.advanced">Avanzate</summary>
+            <div class="form">
+              <label class="check"><input type="checkbox" name="userSettings"><span data-i18n="s.userSettings"></span></label>
+              <label><span data-i18n="s.plugins">Cartelle plugin (una per riga)</span><textarea name="plugins" rows="2"></textarea></label>
+              <label><span data-i18n="s.mcp">Server MCP extra (JSON)</span><textarea name="mcpServers" rows="6" spellcheck="false" class="mono"></textarea></label>
+              <div class="row" id="mcp-presets"></div>
+            </div>
+          </details>
+          <div class="row"><button class="btn primary" data-i18n="saveRestart">Salva e riavvia</button><button class="btn ghost" type="button" id="cfg-save" data-i18n="save">Salva</button></div>
+          <div class="hint muted" data-i18n="s.hint"></div>
+        </form>
+      </div>
+    </section>
+  </main>
+</div>
+<div class="toasts" id="toasts"></div>
+<script src="i18n.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

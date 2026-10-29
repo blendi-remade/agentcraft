@@ -163,6 +163,7 @@ export class SimBackend implements Backend {
 
   onAgentAction(agentId: string, action: string): void {
     if (action === 'pause') this.fm.agentLog(agentId, 'text', `Paused by ${userName()}.`);
+    if (action === 'nudge') this.fm.agentLog(agentId, 'text', `Nudged by ${userName()}.`);
     if (action === 'resume' || action === 'spawn') {
       const a = this.fm.agent(agentId);
       if (a && !a.active) this.fm.setAgent(agentId, { active: true, activity: 'back on shift' });

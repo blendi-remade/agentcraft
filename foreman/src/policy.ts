@@ -64,6 +64,12 @@ export interface PolicyContext {
   tempDirs?: string[];
   /** lead only: command prefixes the user declared read-only, e.g. `bd show` */
   leadReadCommands?: string[];
+  /** the user turned skills on (`--skills`): the Skill tool loads them (their commands still go through this policy) */
+  allowSkills?: boolean;
+  /** MCP server names the user trusts: their tools run without asking */
+  trustedMcp?: string[];
+  /** MCP server names the user did not pick for the agents: their tools are refused */
+  blockedMcp?: string[];
 }
 
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']);
@@ -2063,6 +2069,11 @@ function askVerdict(reason: string, key: string): Verdict {
 export function classifyToolUse(toolName: string, input: Record<string, unknown>, ctx: PolicyContext): Verdict {
   const server = ctx.mcpServer ?? 'agentcraft';
   if (toolName.startsWith(`mcp__${server}__`)) return { action: 'allow', reason: 'AgentCraft tool' };
+  if (toolName === 'Skill' && ctx.allowSkills) return { action: 'allow', reason: 'skills are on' };
+  const blocked = ctx.blockedMcp?.find((n) => toolName.startsWith(`mcp__${n}__`));
+  if (blocked) return { action: 'deny', reason: `the MCP server ${blocked} is not enabled for AgentCraft agents (dashboard: Settings)` };
+  const trusted = ctx.trustedMcp?.find((n) => toolName.startsWith(`mcp__${n}__`));
+  if (trusted) return { action: 'allow', reason: `trusted MCP server ${trusted}` };
   if (toolName in DENIED_TOOLS) return { action: 'deny', reason: DENIED_TOOLS[toolName]! };
   if (ALWAYS_OK.has(toolName)) return { action: 'allow', reason: toolName };
 

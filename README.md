@@ -165,6 +165,17 @@ AgentCraft is built to point at code you care about.
 
 ## Quick start
 
+> **🇮🇹 Il modo più semplice: [AgentCraft Control](docs/CONTROL.md).** Doppio clic su
+> `AgentCraft.cmd` (Windows), `AgentCraft.command` (macOS) o `./agentcraft.sh` (Linux): si apre una
+> dashboard su <http://127.0.0.1:8045> da cui avvii e fermi Foreman e Minecraft, chatti con il team,
+> gestisci agenti, task, decisioni e diff, sblocchi gli agenti fermi, scegli skill e server MCP già
+> configurati per Claude o Codex e apri Variant Studio nel browser integrato. Mod e agenti parlano
+> anche italiano (Impostazioni → Lingua, oppure `/lang it` in gioco).
+>
+> **The easy way: AgentCraft Control.** Double-click `AgentCraft.cmd` / `AgentCraft.command` or run
+> `./agentcraft.sh`: a dashboard on port 8045 starts and stops everything and shows it all. See
+> [docs/CONTROL.md](docs/CONTROL.md).
+
 **You need:** Windows 10 or 11, macOS, or Linux, Java 25, Node 22+, git, and a copy of
 Minecraft: Java Edition.
 
@@ -255,6 +266,8 @@ All keys can be rebound in Options, Controls.
 | `/status` | Goal, agents, tasks, decisions and spend |
 | `/pause @x`, `/resume @x` | Pause an agent, keeping its task |
 | `/stop @x`, `/spawn @x [task]` | Take an agent off shift, or bring one on |
+| `/nudge @x` | Restart a stuck agent's turn (same session) |
+| `/lang it\|en\|auto` | Language of the AgentCraft screens |
 | `/repo add <path>`, `/repos` | Register and list repos |
 | `/help` | Everything else |
 
@@ -332,7 +345,7 @@ uses. Their monitors show tokens per turn instead of dollars.
 | [`foreman/`](foreman) | The orchestrator: agents, task graph, memory, decisions, git safety, 482 tests |
 | [`mod/`](mod) | The Fabric mod: HQ builder, agents, displays, screens, HUD |
 | [`assets-src/`](assets-src) | Scripts that generate every skin, block texture and UI sprite |
-| [`tools/`](tools) | Launcher, stop script, DevBridge CLI, screenshot and QA runner |
+| [`tools/`](tools) | Control dashboard (`control.mjs`, `dashboard/`), launcher, stop script, DevBridge CLI, screenshot and QA runner |
 | [`docs/`](docs) | Protocol reference, QA guide, design notes |
 
 <br>

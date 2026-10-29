@@ -8,6 +8,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.util.HashMap;
 import java.util.Map;
 import net.minecraft.client.Minecraft;
@@ -192,7 +193,7 @@ public final class ReviewKit {
 			return "";
 		}
 		if ("user".equals(id)) {
-			return "You";
+			return Tr.t("You");
 		}
 		Protocol.Agent a = Foreman.state() == null ? null : Foreman.state().agent(id);
 		if (a != null) {
@@ -259,18 +260,18 @@ public final class ReviewKit {
 		}
 		long s = Math.max(0, (System.currentTimeMillis() - ts) / 1000);
 		if (s < 10) {
-			return "just now";
+			return Tr.t("just now");
 		}
 		if (s < 60) {
-			return s + "s ago";
+			return s + Tr.t("s ago");
 		}
 		if (s < 3600) {
-			return (s / 60) + "m ago";
+			return (s / 60) + Tr.t("m ago");
 		}
 		if (s < 86400) {
-			return (s / 3600) + "h ago";
+			return (s / 3600) + Tr.t("h ago");
 		}
-		return (s / 86400) + "d ago";
+		return (s / 86400) + Tr.t("d ago");
 	}
 
 	// ------------------------------------------------------------------ CI
@@ -287,10 +288,10 @@ public final class ReviewKit {
 
 	public static String ciLabel(Protocol.CiStatus ci) {
 		return switch (ci) {
-			case PASS -> "tests pass";
-			case FAIL -> "tests failing";
-			case RUNNING -> "tests running";
-			default -> "no test run";
+			case PASS -> Tr.t("tests pass");
+			case FAIL -> Tr.t("tests failing");
+			case RUNNING -> Tr.t("tests running");
+			default -> Tr.t("no test run");
 		};
 	}
 

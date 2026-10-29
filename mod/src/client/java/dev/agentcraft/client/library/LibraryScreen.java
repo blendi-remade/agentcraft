@@ -12,6 +12,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -74,7 +75,7 @@ public final class LibraryScreen extends Screen {
 	private int textH;
 
 	public LibraryScreen(@Nullable String scope, @Nullable String memoryId) {
-		super(Component.literal("Memory library"));
+		super(Component.literal(Tr.t("Memory library")));
 		this.scope = scope == null ? MemoryIndex.ALL : scope;
 		this.selectedId = memoryId;
 	}
@@ -281,13 +282,13 @@ public final class LibraryScreen extends Screen {
 	private void drawHeader(GuiGraphicsExtractor g) {
 		Panels.sprite(g, Kit.HEADER, ix, iy, iw, 14);
 		Panels.sprite(g, Kit.icon("memory"), ix + 4, iy + 1, 12, 12);
-		ReviewKit.bold(g, font, "Memory library", ix + 20, iy + 3, ReviewKit.ink());
+		ReviewKit.bold(g, font, Tr.t("Memory library"), ix + 20, iy + 3, ReviewKit.ink());
 		int n = MemoryIndex.count(MemoryIndex.ALL);
 		long newest = MemoryIndex.newest(MemoryIndex.ALL);
-		String right = n == 0 ? "empty" : n + (n == 1 ? " note" : " notes") + (newest > 0 ? " · updated " + ReviewKit.ago(newest) : "");
+		String right = n == 0 ? "empty" : n + (n == 1 ? Tr.t(" note") : Tr.t(" notes")) + (newest > 0 ? Tr.t(" · updated ") + ReviewKit.ago(newest) : "");
 		ForemanState s = Foreman.state();
 		if (s != null && s.isStale()) {
-			right = "Foreman offline, last known · " + right;
+			right = Tr.t("Foreman offline, last known · ") + right;
 		}
 		g.text(font, right, ix + iw - 5 - font.width(right), iy + 3, ReviewKit.muted(), false);
 	}
@@ -341,7 +342,7 @@ public final class LibraryScreen extends Screen {
 		listScroll = Math.max(0, Math.min(listScroll, Math.max(0, content - h)));
 		int muted = ReviewKit.muted();
 		if (entries.isEmpty()) {
-			String m = scope.isEmpty() ? "No notes yet" : "No notes in this scope";
+			String m = scope.isEmpty() ? Tr.t("No notes yet") : Tr.t("No notes in this scope");
 			g.text(font, m, x + 6, top + 8, muted, false);
 			return;
 		}
@@ -422,8 +423,8 @@ public final class LibraryScreen extends Screen {
 			MemoryIndex.markSeen(e);
 		}
 		if (e == null) {
-			String m1 = "No memory yet";
-			String m2 = "The lead writes the plan here when you give the team a goal.";
+			String m1 = Tr.t("No memory yet");
+			String m2 = Tr.t("The lead writes the plan here when you give the team a goal.");
 			g.text(font, m1, x + (w - font.width(m1)) / 2, y + h / 2 - 10, ReviewKit.ink(), false);
 			String m = TextUtil.ellipsize(font, m2, w - 20);
 			g.text(font, m, x + (w - font.width(m)) / 2, y + h / 2 + 2, muted, false);
@@ -445,7 +446,7 @@ public final class LibraryScreen extends Screen {
 			g.text(font, name, ax, my0, ReviewKit.agentInk(e.author()), false);
 			ax += font.width(name) + 4;
 		}
-		String meta = "updated " + ReviewKit.ago(e.updated()) + " · " + scopeText;
+		String meta = Tr.t("updated ") + ReviewKit.ago(e.updated()) + " · " + scopeText;
 		g.text(font, TextUtil.ellipsize(font, meta, tx + textW - ax), ax, my0, muted, false);
 		Panels.divider(g, tx, my0 + 11, textW + 6);
 		if (body == null) {
@@ -568,7 +569,7 @@ public final class LibraryScreen extends Screen {
 			return;
 		}
 		minecraft.keyboardHandler.setClipboard(e.body());
-		flash = "Copied \"" + TextUtil.ellipsize(font, e.title(), 140) + "\" as markdown";
+		flash = "Copied \"" + TextUtil.ellipsize(font, e.title(), 140) + Tr.t("\" as markdown");
 		flashUntil = System.currentTimeMillis() + 2500;
 	}
 

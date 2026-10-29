@@ -38,7 +38,33 @@ export interface ClaudeConfig {
   useClaudeLogin: boolean;
   /** command prefixes the lead runs without asking, e.g. `bd show` */
   leadReadCommands: string[];
+  /**
+   * Skills the agents may use: 'off' (default), 'all', or skill names (e.g. ["designer"]). Skills
+   * come from `plugins` and, with `userSettings`, from ~/.claude/skills.
+   */
+  skills: 'off' | 'all' | string[];
+  /**
+   * Load your own ~/.claude settings (skills, CLAUDE.md, user MCP servers). Off by default: those
+   * settings can carry permission rules and hooks. Turned on by `skills` unless set to false.
+   */
+  userSettings: boolean;
+  /** local plugin directories (skills, commands, agents) loaded for every Claude agent */
+  plugins: string[];
+  /**
+   * Your own Claude Code MCP servers (~/.claude.json, the repo's .mcp.json) the agents get, by name,
+   * or 'all'. Picked with checkboxes on the dashboard.
+   */
+  mcp: 'all' | string[];
+  /** extra MCP servers for every Claude agent, in the Claude Code `mcpServers` format */
+  mcpServers: Record<string, McpServerSpec>;
+  /** MCP server names whose tools run without a permission prompt (others ask in game) */
+  trustedMcp: string[];
 }
+
+/** An MCP server as Claude Code's .mcp.json writes it: stdio (`command`) or remote (`url`). */
+export type McpServerSpec =
+  | { type?: 'stdio'; command: string; args?: string[]; env?: Record<string, string> }
+  | { type: 'http' | 'sse'; url: string; headers?: Record<string, string> };
 
 export type EngineName = 'claude' | 'codex';
 export const ENGINE_NAMES: readonly EngineName[] = ['claude', 'codex'];
@@ -52,6 +78,10 @@ export interface CodexConfig {
   /** model_reasoning_effort for workers / the lead (low, medium, high, xhigh...) */
   effort?: string;
   leadEffort?: string;
+  /** skills from ~/.codex/skills and ~/.agents/skills the agents may use: 'off', 'all' or names */
+  skills: 'off' | 'all' | string[];
+  /** your Codex MCP servers ([mcp_servers.*] in ~/.codex/config.toml) that stay on, by name, or 'all' */
+  mcp: 'all' | string[];
 }
 
 /** Which engine runs the lead, the workers, and per-agent exceptions (`--engines kit=codex`). */
@@ -75,8 +105,20 @@ export interface SimConfig {
   ambient: boolean;
 }
 
+export type Language = 'en' | 'it';
+
 export interface Config {
   backend: BackendName;
+  /** the language agents talk to you in (and the dashboard's default): en or it */
+  language: Language;
+  /** minutes without any activity in a running turn before an agent counts as stalled (0 = never) */
+  stallMinutes: number;
+  /** what happens to a stalled agent: tell you (notify) or also restart its turn (nudge) */
+  stallAction: 'notify' | 'nudge';
+  /** start mode for permission prompts (the dashboard switch is saved in the profile and wins) */
+  permissionMode: 'ask' | 'allow_all';
+  /** model per agent, overriding the role's model, e.g. {"kit": "haiku"} (any engine) */
+  agentModels: Record<string, string>;
   /** the person the team works for (prompts, feed, UI); default: the OS user name */
   userName: string;
   home: string;
@@ -207,8 +249,76 @@ export const KNOWN_FLAGS = new Set([
   'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
   'ambient', 'lead-read-commands', 'lead-engine', 'worker-engine', 'engines', 'codex-path', 'codex-model', 'codex-lead-model',
-  'codex-worker-model', 'codex-effort', 'codex-lead-effort',
+  'codex-worker-model', 'codex-effort', 'codex-lead-effort', 'language', 'stall-minutes', 'stall-action', 'skills',
+  'user-settings', 'plugin-dir', 'mcp-config', 'trusted-mcp', 'mcp', 'codex-skills', 'codex-mcp', 'permission-mode',
+  'agent-models',
 ]);
+
+function permissionMode(v: unknown): 'ask' | 'allow_all' {
+  if (v === undefined || v === 'ask') return 'ask';
+  if (v === 'allow_all' || v === 'allow-all') return 'allow_all';
+  throw new Error(`unknown permission mode "${String(v)}" (use ask or allow-all)`);
+}
+
+/** "kit=haiku,wren=opus" (flag) or {"kit": "haiku"} (config.json "models") */
+function agentModels(v: unknown): Record<string, string> {
+  const pairs: Array<[string, unknown]> = v && typeof v === 'object' && !Array.isArray(v) ? Object.entries(v as Record<string, unknown>) : list(v).map((e) => e.split('=').map((x) => x.trim()) as [string, string]);
+  const out: Record<string, string> = {};
+  for (const [agent, model] of pairs) {
+    if (!agent || !/^[a-z0-9_-]+$/i.test(agent) || typeof model !== 'string' || !model.trim()) throw new Error(`bad --agent-models entry "${agent}=${String(model)}" (use agent=model, e.g. kit=haiku)`);
+    out[agent.toLowerCase()] = model.trim();
+  }
+  return out;
+}
+
+/** --mcp all|name,name (flag) or "all" / ["playwright"] (config.json); default none */
+function mcpChoice(v: unknown): 'all' | string[] {
+  if (v === 'all' || v === true) return 'all';
+  return list(v === false || v === 'none' ? [] : v);
+}
+
+function language(v: unknown): Language {
+  const l = String(v ?? 'en').toLowerCase();
+  if (l === 'en' || l.startsWith('en_') || l.startsWith('en-')) return 'en';
+  if (l === 'it' || l.startsWith('it_') || l.startsWith('it-')) return 'it';
+  throw new Error(`unknown language "${String(v)}" (use en or it)`);
+}
+
+function stallAction(v: unknown): 'notify' | 'nudge' {
+  if (v === undefined || v === 'notify') return 'notify';
+  if (v === 'nudge') return 'nudge';
+  throw new Error(`unknown stall action "${String(v)}" (use notify or nudge)`);
+}
+
+/** --skills all|off|name,name (flag) or "all" / ["designer"] / false (config.json) */
+function skills(v: unknown): 'off' | 'all' | string[] {
+  if (v === undefined || v === false || v === 'off' || v === 'none' || v === '') return 'off';
+  if (v === true || v === 'all') return 'all';
+  const names = list(v);
+  for (const n of names) if (!/^[\w.:-]+$/.test(n)) throw new Error(`bad skill name "${n}"`);
+  return names.length ? names : 'off';
+}
+
+/** {"name": {command, args} | {type: "http", url}} from config.json, or the file --mcp-config names ({"mcpServers": {...}}). */
+function mcpServers(fromFile: unknown, configFile: string | undefined): Record<string, McpServerSpec> {
+  let raw = fromFile;
+  if (configFile) {
+    const doc = readJson<Record<string, unknown>>(path.resolve(configFile));
+    if (!doc) throw new Error(`cannot read MCP config ${configFile}`);
+    raw = doc.mcpServers ?? doc;
+  }
+  if (raw === undefined) return {};
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) throw new Error('mcpServers must be an object of servers');
+  const out: Record<string, McpServerSpec> = {};
+  for (const [name, spec] of Object.entries(raw as Record<string, Record<string, unknown>>)) {
+    if (!/^[\w-]+$/.test(name)) throw new Error(`bad MCP server name "${name}"`);
+    if (name === 'agentcraft') throw new Error('the MCP server name "agentcraft" is reserved');
+    if (typeof spec?.command === 'string') out[name] = spec as McpServerSpec;
+    else if (typeof spec?.url === 'string') out[name] = { ...(spec as object), type: spec.type === 'sse' ? 'sse' : 'http' } as McpServerSpec;
+    else throw new Error(`MCP server "${name}" needs a command or a url`);
+  }
+  return out;
+}
 
 function engineName(v: unknown, d: EngineName, what: string): EngineName {
   if (v === undefined || v === '') return d;
@@ -273,8 +383,14 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       : ['juniper', 'kit', 'wren'];
 
   const model = str(flags.model);
+  const skillChoice = skills(flags.skills ?? env.AGENTCRAFT_SKILLS ?? fileClaude.skills);
   const cfg: Config = {
     backend,
+    language: language(pick('language', 'AGENTCRAFT_LANGUAGE')),
+    stallMinutes: Math.max(0, num(pick('stall-minutes', 'AGENTCRAFT_STALL_MINUTES'), 10)),
+    stallAction: stallAction(pick('stall-action', 'AGENTCRAFT_STALL_ACTION')),
+    permissionMode: permissionMode(pick('permission-mode', 'AGENTCRAFT_PERMISSION_MODE')),
+    agentModels: agentModels(flags['agent-models'] ?? env.AGENTCRAFT_AGENT_MODELS ?? file.models),
     userName: (str(pick('user-name', 'AGENTCRAFT_USER_NAME')) ?? str(file.userName))?.trim().slice(0, 40) || defaultUserName(),
     home,
     profile,
@@ -310,6 +426,12 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       leadReview: bool(flags['lead-review'] ?? fileClaude.leadReview, true),
       useClaudeLogin: bool(flags['use-claude-login'] ?? env.AGENTCRAFT_USE_CLAUDE_LOGIN ?? fileClaude.useClaudeLogin, false),
       leadReadCommands: readCommands(flags['lead-read-commands'] ?? env.AGENTCRAFT_LEAD_READ_COMMANDS ?? fileClaude.leadReadCommands),
+      skills: skillChoice,
+      userSettings: bool(flags['user-settings'] ?? fileClaude.userSettings, skillChoice !== 'off'),
+      plugins: list(flags['plugin-dir'] ?? fileClaude.plugins).map((p) => path.resolve(p.replace(/^~(?=$|[\\/])/, os.homedir()))),
+      mcp: mcpChoice(flags.mcp ?? fileClaude.mcp),
+      mcpServers: mcpServers(fileClaude.mcpServers, str(flags['mcp-config'])),
+      trustedMcp: list(flags['trusted-mcp'] ?? fileClaude.trustedMcp),
     },
     codex: {
       path: str(flags['codex-path']) ?? str(env.AGENTCRAFT_CODEX_PATH) ?? str(fileCodex.path),
@@ -317,6 +439,8 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
       workerModel: str(flags['codex-worker-model']) ?? str(flags['codex-model']) ?? str(fileCodex.workerModel) ?? str(fileCodex.model),
       effort: str(flags['codex-effort']) ?? str(fileCodex.effort),
       leadEffort: str(flags['codex-lead-effort']) ?? str(flags['codex-effort']) ?? str(fileCodex.leadEffort) ?? str(fileCodex.effort),
+      skills: skills(flags['codex-skills'] ?? fileCodex.skills),
+      mcp: mcpChoice(flags['codex-mcp'] ?? fileCodex.mcp),
     },
     engines: {
       lead: engineName(pick('lead-engine', 'AGENTCRAFT_LEAD_ENGINE') ?? (file.engines as Record<string, unknown> | undefined)?.lead, backend === 'codex' ? 'codex' : 'claude', 'lead engine'),
@@ -357,6 +481,15 @@ usage: npm run start -- [options]
   --no-sign-merges         never sign approved merge commits (default: signed when your git
                            config has commit.gpgsign=true; claude backend only)
   --debug                  verbose logging
+  --language en|it         the language agents talk to you in (env AGENTCRAFT_LANGUAGE,
+                           config.json "language"; default en)
+  --stall-minutes <n>      a running agent with no activity for n minutes is flagged as stalled
+                           (default 10, 0 = off)
+  --stall-action notify|nudge  notify you (default), or also restart the stalled turn
+  --permission-mode ask|allow-all  allow-all answers every permission prompt with "allow" by
+                           itself (git push is still refused); the dashboard has a switch
+  --agent-models <agent=model,...>  a model per agent, e.g. kit=haiku,marlow=opus (config.json
+                           "models": {"kit": "haiku"}); any engine
 
  sim backend
   --speed <x>              speed multiplier (default 1)
@@ -384,6 +517,15 @@ usage: npm run start -- [options]
                            "bd show,gh issue view" (env AGENTCRAFT_LEAD_READ_COMMANDS)
   --no-lead-review         skip the lead's review turn before merge decisions
   --no-resume              do not resume interrupted sessions on start
+  --skills all|<name,...>  let the agents use skills (default off), e.g. --skills designer
+  --user-settings          load your ~/.claude settings (skills, CLAUDE.md, user MCP servers);
+                           on by default with --skills (--no-user-settings to keep it off)
+  --plugin-dir <dir,...>   load local plugins (their skills, commands and MCP servers)
+  --mcp all|<name,...>     your own Claude Code MCP servers the agents get (~/.claude.json,
+                           the repo's .mcp.json; default none; the dashboard has checkboxes)
+  --mcp-config <file>      extra MCP servers, a .mcp.json style {"mcpServers": {...}} file
+                           (config.json: claude.mcpServers)
+  --trusted-mcp <name,...> MCP servers whose tools run without asking (others ask in game)
 
  codex engine (--backend codex, or mixed teams)
   auth: your Codex login (\`codex login\`: ChatGPT or an OpenAI API key)
@@ -394,6 +536,8 @@ usage: npm run start -- [options]
   --codex-model <m>        model for Codex agents (default: your Codex config's model)
   --codex-lead-model <m> / --codex-worker-model <m>
   --codex-effort <e>       reasoning effort (low|medium|high|xhigh...; default: your Codex config's)
-  Codex agents get none of your own MCP servers, plugins, web search or apps; every command and
-  out-of-worktree edit goes through the same policy and in-game permission prompts.
+  --codex-skills all|<name,...>  skills from ~/.codex/skills and ~/.agents/skills (default off)
+  --codex-mcp all|<name,...>     your Codex MCP servers (~/.codex/config.toml) that stay on (default none)
+  Codex agents get none of your plugins, web search or apps, and only the MCP servers you pick;
+  every command and out-of-worktree edit goes through the same policy and in-game permission prompts.
 `;

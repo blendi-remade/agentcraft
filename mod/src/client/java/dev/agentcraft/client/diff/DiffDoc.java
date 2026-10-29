@@ -5,6 +5,7 @@ import dev.agentcraft.client.foreman.Protocol.DiffFile;
 import dev.agentcraft.client.foreman.Protocol.DiffHunk;
 import dev.agentcraft.client.foreman.Protocol.DiffLine;
 import dev.agentcraft.client.foreman.Protocol.DiffLineKind;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.regex.Matcher;
@@ -170,10 +171,10 @@ final class DiffDoc {
 			fi.headerRow = rows.size();
 			y = add(Kind.FILE, i, y, FILE_H);
 			if (f.binary()) {
-				y = note(i, y, "Binary file, not shown");
+				y = note(i, y, Tr.t("Binary file, not shown"));
 			} else if (f.hunks().isEmpty()) {
-				y = note(i, y, f.status() == Protocol.DiffFileStatus.RENAMED && f.oldPath() != null ? "Renamed from " + f.oldPath() + ", no content changes"
-					: "No content changes");
+				y = note(i, y, f.status() == Protocol.DiffFileStatus.RENAMED && f.oldPath() != null ? Tr.t("Renamed from ") + f.oldPath() + Tr.t(", no content changes")
+					: Tr.t("No content changes"));
 			}
 			int prevEnd = 1;
 			for (DiffHunk h : f.hunks()) {
@@ -211,7 +212,7 @@ final class DiffDoc {
 		if (diff.truncated()) {
 			y = add(Kind.GAP, -1, y, GAP_H);
 			Row r = row(Kind.NOTE, -1, y, NOTE_H);
-			r.text = "The Foreman shortened this diff (very large files). Open the worktree for the rest.";
+			r.text = Tr.t("The Foreman shortened this diff (very large files). Open the worktree for the rest.");
 			y += NOTE_H;
 		}
 		height = y + BOTTOM_PAD;

@@ -4,6 +4,7 @@ import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol.Decision;
 import dev.agentcraft.client.foreman.Protocol.DecisionKind;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
@@ -77,7 +78,7 @@ public final class DecisionQueue {
 	public static String kindLabel(DecisionKind k) {
 		return switch (k) {
 			case PERMISSION -> "permission";
-			case MERGE -> "merge review";
+			case MERGE -> Tr.t("merge review");
 			case QUESTION -> "question";
 			default -> "decision";
 		};

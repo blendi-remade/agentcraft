@@ -94,3 +94,85 @@ describe('user name', () => {
     }
   });
 });
+
+describe('language, stall watchdog, skills and MCP servers', () => {
+  it('defaults: English, 10 minute stall notice, no skills, no user settings', () => {
+    const cfg = load([]);
+    expect(cfg.language).toBe('en');
+    expect(cfg.stallMinutes).toBe(10);
+    expect(cfg.stallAction).toBe('notify');
+    expect(cfg.claude.skills).toBe('off');
+    expect(cfg.claude.userSettings).toBe(false);
+    expect(cfg.claude.mcpServers).toEqual({});
+  });
+
+  it('reads them from flags', () => {
+    const cfg = load(['--language', 'it_IT', '--stall-minutes', '5', '--stall-action', 'nudge', '--skills', 'designer,pdf', '--trusted-mcp', 'playwright']);
+    expect(cfg.language).toBe('it');
+    expect(cfg.stallMinutes).toBe(5);
+    expect(cfg.stallAction).toBe('nudge');
+    expect(cfg.claude.skills).toEqual(['designer', 'pdf']);
+    expect(cfg.claude.userSettings).toBe(true);
+    expect(cfg.claude.trustedMcp).toEqual(['playwright']);
+    expect(load(['--skills', 'all', '--no-user-settings']).claude).toMatchObject({ skills: 'all', userSettings: false });
+  });
+
+  it('reads them from config.json, and --mcp-config from a .mcp.json style file', () => {
+    home = tempDir();
+    fs.writeFileSync(
+      path.join(home, 'config.json'),
+      JSON.stringify({ language: 'it', claude: { skills: 'all', plugins: ['/opt/designer'], mcpServers: { playwright: { command: 'npx', args: ['@playwright/mcp'] }, docs: { type: 'http', url: 'http://localhost:9000/mcp' } } } }),
+    );
+    const cfg = loadConfig(['--home', home], {});
+    expect(cfg.language).toBe('it');
+    expect(cfg.claude.skills).toBe('all');
+    expect(cfg.claude.plugins).toEqual([path.resolve('/opt/designer')]);
+    expect(Object.keys(cfg.claude.mcpServers)).toEqual(['playwright', 'docs']);
+    const file = path.join(home, 'mcp.json');
+    fs.writeFileSync(file, JSON.stringify({ mcpServers: { fs: { command: 'npx', args: ['server-filesystem'] } } }));
+    expect(Object.keys(loadConfig(['--home', home, '--mcp-config', file], {}).claude.mcpServers)).toEqual(['fs']);
+  });
+
+  it('refuses a bad language, a server without command or url, and the reserved agentcraft name', () => {
+    expect(() => load(['--language', 'de'])).toThrow(/language/);
+    const dir = tempDir();
+    home = dir;
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ claude: { mcpServers: { x: { args: [] } } } }));
+    expect(() => loadConfig(['--home', dir], {})).toThrow(/command or a url/);
+    fs.writeFileSync(path.join(dir, 'config.json'), JSON.stringify({ claude: { mcpServers: { agentcraft: { command: 'x' } } } }));
+    expect(() => loadConfig(['--home', dir], {})).toThrow(/reserved/);
+  });
+});
+
+describe('skills and MCP servers found where each engine keeps them', () => {
+  it('lists Claude and Codex skills and MCP servers from their own folders', async () => {
+    const { findSkills, skillRoots, claudeMcpServers, codexMcpServers, selectedSkills, skillsNote } = await import('../src/skills.js');
+    const h = tempDir();
+    home = h;
+    const skill = (root: string, name: string) => {
+      fs.mkdirSync(path.join(h, root, name), { recursive: true });
+      fs.writeFileSync(path.join(h, root, name, 'SKILL.md'), `---\nname: ${name}\ndescription: does ${name}\n---\n`);
+    };
+    skill('.claude/skills', 'designer');
+    skill('.agents/skills', 'shared-one');
+    skill('.codex/skills', 'codex-only');
+    fs.writeFileSync(path.join(h, '.claude.json'), JSON.stringify({ mcpServers: { playwright: { command: 'npx', args: ['@playwright/mcp'] }, docs: { type: 'http', url: 'http://localhost:9/mcp' } } }));
+    fs.writeFileSync(path.join(h, '.codex', 'config.toml'), 'model = "x"\n[mcp_servers.github]\ncommand = "npx"\nargs = ["-y", "gh-mcp"] # comment\n[mcp_servers.github.env]\nTOKEN = "x"\n[mcp_servers."web search"]\nurl = "http://localhost:3/mcp"\n');
+    const o = { home: h, env: {} };
+    expect(findSkills(skillRoots('claude', o)).map((s) => s.name)).toEqual(['designer', 'shared-one']);
+    expect(findSkills(skillRoots('codex', o)).map((s) => s.name)).toEqual(['codex-only', 'shared-one']);
+    expect(claudeMcpServers([], o).map((s) => [s.name, s.summary])).toEqual([['playwright', 'npx @playwright/mcp'], ['docs', 'http://localhost:9/mcp']]);
+    expect(codexMcpServers(o).map((s) => [s.name, s.summary])).toEqual([['github', 'npx -y gh-mcp'], ['web search', 'http://localhost:3/mcp']]);
+    expect(selectedSkills('codex', ['shared-one'], o).map((s) => s.name)).toEqual(['shared-one']);
+    expect(selectedSkills('codex', 'off', o)).toEqual([]);
+    expect(skillsNote(selectedSkills('claude', 'all', o))).toMatch(/designer: .*SKILL\.md - does designer/);
+  });
+
+  it('reads the picks for each engine', () => {
+    const cfg = load(['--mcp', 'playwright', '--codex-skills', 'all', '--codex-mcp', 'github']);
+    expect(cfg.claude.mcp).toEqual(['playwright']);
+    expect(cfg.codex.skills).toBe('all');
+    expect(cfg.codex.mcp).toEqual(['github']);
+    expect(load([]).codex).toMatchObject({ skills: 'off', mcp: [] });
+  });
+});

@@ -11,6 +11,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.StatusMap;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -85,7 +86,7 @@ final class TaskBoard {
 	}
 
 	enum Col {
-		TODO("Todo", "todo"), DOING("Doing", "doing"), REVIEW("Review", "review"), DONE("Done", "done");
+		TODO(Tr.t("Todo"), "todo"), DOING(Tr.t("Doing"), "doing"), REVIEW(Tr.t("Review"), "review"), DONE(Tr.t("Done"), "done");
 
 		final String label;
 		final String card;
@@ -524,13 +525,13 @@ final class TaskBoard {
 			String label = listMode ? "TASKS" : col.col.label.toUpperCase(Locale.ROOT);
 			String cs = Integer.toString(col.count);
 			// an explicit "1 blocked" chip (not a red dot next to the count, which read as "4 blocked")
-			String bl = col.blocked > 0 ? col.blocked + " blocked" : "";
+			String bl = col.blocked > 0 ? col.blocked + Tr.t(" blocked") : "";
 			if (!bl.isEmpty() && font.width(label) + font.width(cs) + font.width(bl) + 24 > col.w) {
 				bl = col.blocked + "!";
 			}
 			if (font.width(label) + font.width(cs) + (bl.isEmpty() ? 0 : font.width(bl) + 12) + 12 > col.w) {
 				// tiny board: the count says it all
-				label = cs + (listMode ? " tasks" : "");
+				label = cs + (listMode ? Tr.t(" tasks") : "");
 				cs = "";
 			}
 			col.blockedSeq = seq(bl);
@@ -604,7 +605,7 @@ final class TaskBoard {
 				}
 			}
 			if (!col.hidden.isEmpty()) {
-				String more = "+" + col.hidden.size() + " more";
+				String more = "+" + col.hidden.size() + Tr.t(" more");
 				col.chip = seq(more);
 				col.chipW = font.width(more) + 10;
 				col.chipY = rowY[plan.shownRows()] - 1;
@@ -941,12 +942,12 @@ final class TaskBoard {
 			hint = yours;
 			hintColor = UiStyle.CLAY_DARK;
 		} else if (t.ci() == CiStatus.FAIL && !done) {
-			hint = "CI failing";
+			hint = Tr.t("CI failing");
 			hintColor = error;
 		} else if (!pending.isEmpty() && !done) {
-			hint = "after " + String.join(", ", pending);
+			hint = Tr.t("after ") + String.join(", ", pending);
 		} else if (t.ci() == CiStatus.RUNNING) {
-			hint = "CI running";
+			hint = Tr.t("CI running");
 		} else if (t.priority() > 0 && c.col == Col.TODO) {
 			hint = "P" + t.priority() + "  " + t.id();
 		} else {

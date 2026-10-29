@@ -6,6 +6,7 @@ import dev.agentcraft.client.foreman.Foreman;
 import dev.agentcraft.client.foreman.ForemanState;
 import dev.agentcraft.client.foreman.Protocol;
 import dev.agentcraft.client.foreman.Protocol.MemoryEntry;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.LinkedHashMap;
@@ -193,10 +194,10 @@ public final class MemoryIndex {
 
 	public static String scopeLabel(@Nullable String scope) {
 		if (scope == null || scope.isEmpty()) {
-			return "All";
+			return Tr.t("All");
 		}
 		if (scope.equals("shared")) {
-			return "Shared";
+			return Tr.t("Shared");
 		}
 		return ReviewKit.agentName(scope);
 	}

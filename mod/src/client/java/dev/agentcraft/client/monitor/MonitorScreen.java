@@ -9,6 +9,7 @@ import dev.agentcraft.client.foreman.Protocol.Goal;
 import dev.agentcraft.client.foreman.Protocol.LogEntry;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
@@ -193,7 +194,7 @@ final class MonitorScreen {
 		switch (mode) {
 			case LIVE, OFF_SHIFT, NO_AGENT -> {
 				Agent a = s == null ? null : s.agent(agentId);
-				String n = a != null ? a.name() : agentId.isEmpty() ? "Monitor" : agentId;
+				String n = a != null ? a.name() : agentId.isEmpty() ? Tr.t("Monitor") : agentId;
 				nameColor = st.name(agentId);
 				dotFamily = a == null ? "idle" : mode == Mode.OFF_SHIFT ? "idle" : a.state().family();
 				String task = a != null && a.taskId() != null && mode == Mode.LIVE ? a.taskId() : "";
@@ -222,16 +223,16 @@ final class MonitorScreen {
 					String fam = a.state().family();
 					caret = fam.equals("working") || fam.equals("thinking");
 					if (fam.equals("waiting")) {
-						footer = LogRows.seq(TextUtil.ellipsize(font, font.width("Waiting for you") <= w ? "Waiting for you" : "Needs you", w));
+						footer = LogRows.seq(TextUtil.ellipsize(font, font.width(Tr.t("Waiting for you")) <= w ? Tr.t("Waiting for you") : Tr.t("Needs you"), w));
 						footerColor = st.attention();
 					} else if (a.isPaused()) {
-						footer = LogRows.seq("Paused");
+						footer = LogRows.seq(Tr.t("Paused"));
 						footerColor = st.muted();
 					}
 				}
 				if (mode != Mode.LIVE) {
-					String line = mode == Mode.OFF_SHIFT ? "Off shift" : "Not on the team";
-					String sub = mode == Mode.OFF_SHIFT ? "in the lounge" : "binding: " + agentId;
+					String line = mode == Mode.OFF_SHIFT ? Tr.t("Off shift") : Tr.t("Not on the team");
+					String sub = mode == Mode.OFF_SHIFT ? Tr.t("in the lounge") : Tr.t("binding: ") + agentId;
 					addCentre(font, line, st.text());
 					addCentre(font, TextUtil.ellipsize(font, sub, w), st.muted());
 				}
@@ -240,7 +241,7 @@ final class MonitorScreen {
 				Goal g = s == null ? null : s.goal();
 				nameColor = st.text();
 				dotFamily = g == null ? "idle" : "working";
-				name = LogRows.seq(TextUtil.ellipsize(font, "Team activity", w - 30));
+				name = LogRows.seq(TextUtil.ellipsize(font, Tr.t("Team activity"), w - 30));
 				if (g != null) {
 					String p = Math.round(g.progress() * 100) + "%";
 					pill = LogRows.seq(p);
@@ -248,7 +249,7 @@ final class MonitorScreen {
 					pillColor = st.muted();
 					activity = LogRows.seq(TextUtil.ellipsize(font, g.text(), w));
 				} else {
-					activity = LogRows.seq("no goal yet");
+					activity = LogRows.seq(Tr.t("no goal yet"));
 				}
 				activityX = cx0;
 				activityY = y + LogRows.LINE;
@@ -259,7 +260,7 @@ final class MonitorScreen {
 				dotFamily = "idle";
 				nameColor = st.text();
 				if ("feed".equals(agentId)) {
-					name = LogRows.seq(TextUtil.ellipsize(font, "Team activity", w - 10));
+					name = LogRows.seq(TextUtil.ellipsize(font, Tr.t("Team activity"), w - 10));
 				} else if (!agentId.isEmpty()) {
 					Cast.Member cm = Cast.get(agentId);
 					nameColor = st.name(agentId);
@@ -292,7 +293,7 @@ final class MonitorScreen {
 			return "";
 		}
 		String act = a.activity().isBlank() ? a.state().wire().replace('_', ' ') : LogRows.plainProse(a.activity());
-		return a.isPaused() ? "paused: " + act : act;
+		return a.isPaused() ? Tr.t("paused: ") + act : act;
 	}
 
 	/** Lays out rows newest first; returns the px height of rows newer than {@code oldNewest}. */
@@ -362,7 +363,7 @@ final class MonitorScreen {
 			who = a != null ? a.name() : id;
 			whoColor = st.name(id);
 		} else if ("user".equals(id) || f.kind() == dev.agentcraft.client.foreman.Protocol.FeedKind.USER) {
-			who = "You";
+			who = Tr.t("You");
 			whoColor = st.text();
 		}
 		int color = switch (f.kind()) {

@@ -65,7 +65,8 @@ export interface Engine {
   readonly id: EngineId;
   /** display name, e.g. "Claude" */
   readonly label: string;
-  model(role: Role): string;
+  /** the model a role runs, or the agent's own (config `models`) when `agentId` has one */
+  model(role: Role, agentId?: string): string;
   checkAuth(): Promise<AuthCheck>;
   runTurn(spec: TurnSpec): Promise<TurnStats>;
   /** what to tell the user when a turn failed authentication */

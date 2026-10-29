@@ -11,6 +11,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import net.fabricmc.fabric.api.client.rendering.v1.hud.HudElement;
 import net.minecraft.client.DeltaTracker;
 import net.minecraft.client.Minecraft;
@@ -63,11 +64,11 @@ public final class ConnectionBanner implements HudElement {
 		boolean pulse = false;
 		if (link.phase() == Phase.DISABLED) {
 			dot = "idle";
-			title = "Foreman link off";
+			title = Tr.t("Foreman link off");
 			detail = "AGENTCRAFT_FOREMAN=0";
 		} else if (link.synced()) {
 			dot = fs != null && fs.auth() == AuthStatus.FAILED ? "error" : fs != null && fs.auth() == AuthStatus.CHECKING ? "thinking" : "working";
-			title = "Foreman · " + backendLabel(fs);
+			title = Tr.t("Foreman · ") + backendLabel(fs);
 			if (fs != null && fs.backend() != BackendName.SIM && fs.account() != null) {
 				detail = fs.account();
 			}
@@ -77,12 +78,12 @@ public final class ConnectionBanner implements HudElement {
 		} else if (link.everSynced()) {
 			dot = "waiting";
 			pulse = true;
-			title = "Reconnecting to the Foreman" + (link.attempt() > 1 ? " (" + link.attempt() + ")" : "");
-			detail = "showing last known state";
+			title = Tr.t("Reconnecting to the Foreman") + (link.attempt() > 1 ? " (" + link.attempt() + ")" : "");
+			detail = Tr.t("showing last known state");
 		} else {
 			dot = "idle";
-			title = "Foreman not running";
-			detail = "start it: cd foreman; npm run start";
+			title = Tr.t("Foreman not running");
+			detail = Tr.t("start it: AgentCraft.cmd or agentcraft.sh (dashboard on :8045)");
 		}
 		drawPill(g, font, dot, title, detail, alpha, pulse, now);
 
@@ -134,11 +135,11 @@ public final class ConnectionBanner implements HudElement {
 
 	private static void drawAuthBanner(GuiGraphicsExtractor g, Font font, ForemanStatus fs) {
 		String head = switch (fs.backend()) {
-			case CODEX -> "Codex backend can't authenticate";
-			case CLAUDE -> "Claude backend can't authenticate";
-			default -> "Agent backend can't authenticate";
+			case CODEX -> Tr.t("Codex backend can't authenticate");
+			case CLAUDE -> Tr.t("Claude backend can't authenticate");
+			default -> Tr.t("Agent backend can't authenticate");
 		};
-		String msg = fs.message() != null ? fs.message() : "run `claude` and /login, then restart the Foreman";
+		String msg = fs.message() != null ? fs.message() : Tr.t("run `claude` and /login, then restart the Foreman");
 		int maxW = Math.min(360, g.guiWidth() - 40);
 		var lines = TextUtil.wrap(font, msg, maxW - 34);
 		Kit.Padding p = Kit.padding("panel_paper");

@@ -38,6 +38,8 @@ interface Client {
   id: number;
   hello: boolean;
   name: string;
+  /** what the client said it is in hello ("mod", "dashboard", "cli"...) */
+  kind?: string;
   alive: boolean;
 }
 
@@ -129,7 +131,9 @@ export class ForemanServer {
       if (msg.type === 'hello') {
         client.hello = true;
         client.name = `${msg.client ?? 'client'}#${client.id} (${msg.modVersion})`;
+        client.kind = msg.client ?? 'client';
         this.opts.log.info(`hello from ${client.name}`);
+        this.publishClients();
       } else if (!client.hello) {
         // be lenient: treat the first intent as an implicit hello so tools can fire-and-forget
         client.hello = true;
@@ -138,9 +142,16 @@ export class ForemanServer {
     });
     ws.on('close', () => {
       this.clients.delete(client);
+      if (client.kind) this.publishClients();
       this.opts.log.info(`client #${client.id} disconnected`);
     });
     ws.on('error', (e) => this.opts.log.warn(`client #${client.id}: ${e.message}`));
+  }
+
+  /** Who is connected (ForemanStatus.clients): a dashboard shows whether the game is there. */
+  private publishClients(): void {
+    const kinds = [...this.clients].filter((c) => c.kind).map((c) => c.kind!);
+    this.foreman.setStatus({ clients: [...new Set(kinds)].sort() });
   }
 
   private serialize(m: Outbound): string | undefined {

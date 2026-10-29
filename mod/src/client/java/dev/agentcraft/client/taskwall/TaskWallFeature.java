@@ -16,6 +16,7 @@ import dev.agentcraft.client.foreman.Protocol.TaskStatus;
 import dev.agentcraft.client.ui.Guard;
 import dev.agentcraft.client.world.StationInteractions;
 import dev.agentcraft.client.world.StationRenderer;
+import dev.agentcraft.client.ui.Tr;
 import java.util.HashMap;
 import java.util.Iterator;
 import java.util.List;
@@ -131,7 +132,7 @@ public final class TaskWallFeature {
 					if (open != null) {
 						ForemanState s = Foreman.state();
 						if (s == null || s.task(open) == null) {
-							throw new DevBridge.DevException("no task " + open);
+							throw new DevBridge.DevException(Tr.t("no task ") + open);
 						}
 						selected = open;
 						mc.gui.setScreen(new TaskScreen(open));

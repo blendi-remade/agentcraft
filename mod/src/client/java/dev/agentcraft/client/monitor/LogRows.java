@@ -3,6 +3,7 @@ package dev.agentcraft.client.monitor;
 import dev.agentcraft.client.foreman.Protocol.LogEntry;
 import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.TextUtil;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Locale;
@@ -83,7 +84,7 @@ public final class LogRows {
 			out.add(plain(TextUtil.ellipsize(font, ls[i], width), color));
 		}
 		if (ls.length > shown) {
-			out.add(plain("+" + (ls.length - shown) + " more", st.muted()));
+			out.add(plain("+" + (ls.length - shown) + Tr.t(" more"), st.muted()));
 		}
 	}
 
@@ -116,7 +117,7 @@ public final class LogRows {
 		int total = lines.size();
 		for (String raw : lines) {
 			if (rows == MAX_DIFF_LINES - 1 && total > MAX_DIFF_LINES) {
-				out.add(plain("+" + (total - rows) + " more lines", st.muted()));
+				out.add(plain("+" + (total - rows) + Tr.t(" more lines"), st.muted()));
 				return;
 			}
 			String l = dedent(raw, indent);

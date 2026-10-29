@@ -386,6 +386,15 @@ describe('permission policy', () => {
     expect(v.action, v.reason).toBe(expected);
   });
 
+  it('skills only when turned on; trusted MCP servers run without asking, others ask', () => {
+    expect(classifyToolUse('Skill', { skill: 'designer' }, worker).action).toBe('deny');
+    expect(classifyToolUse('Skill', { skill: 'designer' }, { ...worker, allowSkills: true }).action).toBe('allow');
+    expect(classifyToolUse('mcp__playwright__browser_navigate', { url: 'http://localhost:5173' }, worker).action).toBe('ask');
+    expect(classifyToolUse('mcp__playwright__browser_navigate', { url: 'http://localhost:5173' }, { ...worker, trustedMcp: ['playwright'] }).action).toBe('allow');
+    // a server name that only starts like a trusted one is not trusted
+    expect(classifyToolUse('mcp__playwrightx__run', {}, { ...worker, trustedMcp: ['playwright'] }).action).toBe('ask');
+  });
+
   it('labels registry commands as network access', () => {
     const v = classifyToolUse('Bash', { command: 'npm view left-pad version' }, worker);
     expect(v.action).toBe('ask');

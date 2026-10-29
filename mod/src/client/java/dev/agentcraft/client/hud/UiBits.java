@@ -8,6 +8,7 @@ import dev.agentcraft.client.ui.Kit;
 import dev.agentcraft.client.ui.Panels;
 import dev.agentcraft.client.ui.TextUtil;
 import dev.agentcraft.client.ui.UiStyle;
+import dev.agentcraft.client.ui.Tr;
 import java.time.Instant;
 import java.time.LocalTime;
 import java.time.ZoneId;
@@ -108,7 +109,7 @@ public final class UiBits {
 	public static String userName() {
 		var st = Foreman.state().status();
 		String n = st == null ? null : st.userName();
-		return n == null || n.isBlank() ? "You" : n;
+		return n == null || n.isBlank() ? Tr.t("You") : n;
 	}
 
 	/** Display name of an agent id (Foreman name, then cast name, then the id). */
@@ -117,7 +118,7 @@ public final class UiBits {
 			return "";
 		}
 		if (isUser(agentId)) {
-			return "You";
+			return Tr.t("You");
 		}
 		if (agentId.equals("all")) {
 			return "everyone";
@@ -332,18 +333,18 @@ public final class UiBits {
 	public static String ago(long ts) {
 		long d = Math.max(0, System.currentTimeMillis() - ts) / 1000;
 		if (d < 10) {
-			return "just now";
+			return Tr.t("just now");
 		}
 		if (d < 60) {
-			return d + "s ago";
+			return d + Tr.t("s ago");
 		}
 		if (d < 3600) {
-			return d / 60 + "m ago";
+			return d / 60 + Tr.t("m ago");
 		}
 		if (d < 86400) {
-			return d / 3600 + "h ago";
+			return d / 3600 + Tr.t("h ago");
 		}
-		return d / 86400 + "d ago";
+		return d / 86400 + Tr.t("d ago");
 	}
 
 	public static String clock(long ts) {

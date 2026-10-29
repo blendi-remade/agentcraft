@@ -7,8 +7,9 @@
 // - sandbox: workers write only their worktree (+ its git dir, for commits), the lead nothing; no
 //   network inside the sandbox (a command that needs it asks again, through the same policy)
 // - the team tools (send_message, ask_user, update_task...) are dynamic tools answered here
-// - none of the user's own Codex setup leaks in: their MCP servers, plugins, apps, web search,
-//   image generation and notify hooks are off for agent threads (their Codex app is untouched)
+// - none of the user's own Codex setup leaks in: their plugins, apps, web search, image generation
+//   and notify hooks are off for agent threads (their Codex app is untouched); of their MCP servers
+//   only the ones picked in `codex.mcp` stay on, and skills they picked are named in the instructions
 // - commands run with the git safety environment (no push, no hooks, the agent's own identity),
 //   passed explicitly because Codex drops variables named like secrets (GIT_CONFIG_KEY_0...)
 import fs from 'node:fs';
@@ -22,6 +23,7 @@ import { userName } from '../../user.js';
 import type { AuthCheck, Engine, Role, TurnSpec, TurnStats } from '../engine.js';
 import type { AgentTool } from '../tools.js';
 import { CODEX_NOT_FOUND, findCodex } from './find.js';
+import { selectedSkills, skillsNote } from '../../skills.js';
 import { AppServer } from './rpc.js';
 import { CodexStreamMapper, shellCommand } from './stream.js';
 
@@ -111,8 +113,8 @@ export class CodexEngine implements Engine {
     return isolated;
   }
 
-  model(role: Role): string {
-    return (role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel) ?? this.configuredModel ?? 'default';
+  model(role: Role, agentId?: string): string {
+    return (agentId && this.fm.config.agentModels[agentId]) || ((role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel) ?? this.configuredModel ?? 'default');
   }
 
   authFailedMessage(detail: string): string {
@@ -149,7 +151,8 @@ export class CodexEngine implements Engine {
     const off = (names: string[]) => Object.fromEntries(names.map((n) => [n, { enabled: false }]));
     const effort = spec.role === 'lead' ? this.cfg.leadEffort : this.cfg.effort;
     return {
-      mcp_servers: off(Object.keys(userConfig?.mcp_servers ?? {})),
+      // only the servers you picked stay on (--codex-mcp; the dashboard's checkboxes)
+      mcp_servers: off(Object.keys(userConfig?.mcp_servers ?? {}).filter((n) => this.cfg.mcp !== 'all' && !this.cfg.mcp.includes(n))),
       plugins: off(Object.keys(userConfig?.plugins ?? {})),
       features: Object.fromEntries(OFF_FEATURES.map((f) => [f, false])),
       web_search: 'disabled',
@@ -204,14 +207,14 @@ export class CodexEngine implements Engine {
       await this.initialize(server);
       const userConfig = (await server.request<any>('config/read', { cwd }, 30_000).catch(() => undefined))?.config;
       if (typeof userConfig?.model === 'string') this.configuredModel ??= userConfig.model;
-      const model = role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
+      const model = this.fm.config.agentModels[agentId] || (role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel);
       const dynamicTools = spec.tools.map((t) => ({ type: 'function', name: t.name, description: t.description, inputSchema: z.toJSONSchema(z.object(t.shape)) }));
       const thread = {
         cwd,
         approvalPolicy: 'untrusted',
         sandbox: role === 'lead' ? 'read-only' : 'workspace-write',
         config: this.threadConfig(userConfig, spec, serverEnv),
-        developerInstructions: spec.instructions + notes(role, spec.tools),
+        developerInstructions: spec.instructions + notes(role, spec.tools) + skillsNote(selectedSkills('codex', this.cfg.skills)),
         dynamicTools,
         ...(model ? { model } : {}),
       };

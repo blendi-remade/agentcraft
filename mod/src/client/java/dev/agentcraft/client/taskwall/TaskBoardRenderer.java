@@ -15,6 +15,7 @@ import dev.agentcraft.client.ui.UiStyle;
 import dev.agentcraft.client.ui.WorldUi;
 import dev.agentcraft.client.world.StationRenderState;
 import dev.agentcraft.client.world.StationRenderer;
+import dev.agentcraft.client.ui.Tr;
 import java.util.ArrayList;
 import java.util.List;
 import net.minecraft.client.Minecraft;
@@ -229,10 +230,10 @@ public class TaskBoardRenderer extends StationRenderer<TaskBoardBlockEntity, Tas
 	/** No tasks yet: a paper note pinned in the middle that says how to start, with the console key as a keycap. */
 	private static void drawEmpty(PoseStack ps, SubmitNodeCollector c, TaskBoard b, int light) {
 		Font font = Minecraft.getInstance().font;
-		String l1 = "No tasks yet";
+		String l1 = Tr.t("No tasks yet");
 		String key = TaskWallFeature.startKey();
-		String pre = key.isEmpty() ? "Open the console, type a goal" : "Press ";
-		String post = key.isEmpty() ? "" : " and type a goal";
+		String pre = key.isEmpty() ? Tr.t("Open the console, type a goal") : Tr.t("Press ");
+		String post = key.isEmpty() ? "" : Tr.t(" and type a goal");
 		float kw = key.isEmpty() ? 0 : font.width(key) + 8;
 		float w2 = font.width(pre) + kw + font.width(post);
 		float w = Math.max(font.width(l1), w2) + 18, h = 33;

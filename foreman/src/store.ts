@@ -58,7 +58,9 @@ export interface StateData {
   counters: Record<string, number>;
   sessions: Record<string, SessionRecord>;
   worktreeMeta: Record<string, WorktreeMeta>; // key: `${repoId}/${worktreeId}`
-  permissionRules: Record<string, string[]>; // agentId -> rule keys always allowed
+  permissionRules: Record<string, string[]>; // agentId ("*" = every agent) -> rule keys always allowed
+  /** allow_all: permission prompts are answered "allow" by themselves (set from the dashboard) */
+  permissionMode?: 'ask' | 'allow_all';
   /** opaque backend-owned state (e.g. sim progress) */
   backend: Record<string, unknown>;
 }

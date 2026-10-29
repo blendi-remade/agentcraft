@@ -96,8 +96,9 @@ export async function main(argv: string[]): Promise<void> {
   process.on('SIGINT', () => void shutdown('SIGINT'));
   process.on('SIGTERM', () => void shutdown('SIGTERM'));
   process.on('SIGBREAK', () => void shutdown('SIGBREAK'));
-  // stdin "q" + Enter also quits cleanly (handy on Windows where signals to children are awkward)
-  if (process.stdin.isTTY) {
+  // stdin "q" + Enter also quits cleanly (handy on Windows where signals to children are awkward);
+  // AGENTCRAFT_STDIN_QUIT=1 lets a supervisor (the control panel) do the same through a pipe
+  if (process.stdin.isTTY || process.env.AGENTCRAFT_STDIN_QUIT === '1') {
     process.stdin.setEncoding('utf8');
     process.stdin.on('data', (d: string) => {
       if (d.trim() === 'q') void shutdown('quit');

@@ -1,5 +1,8 @@
 # tools/
 
+**AgentCraft Control** (`control.mjs` + `dashboard/`): one program and a web dashboard on
+:8045 that runs the Foreman and the game and shows everything. See [docs/CONTROL.md](../docs/CONTROL.md).
+
 ## macOS and Linux
 
 Requires Node 22+, git, and Java 25. On macOS install Java with `brew install openjdk@25`; on
