@@ -737,8 +737,8 @@ public class ConsoleScreen extends Screen {
 			}
 		}
 		String repo = s.repos().size() == 1 ? s.repos().values().iterator().next().name() : s.repos().size() + " repos";
-		String spend = ConsoleActions.spendLabel(s);
-		return "· " + active + " on shift · " + repo + (spend != null ? " · " + spend : "");
+		String usage = ConsoleActions.usageLabel(s);
+		return "· " + active + " on shift · " + repo + (usage != null ? " · " + usage : "");
 	}
 
 	private int rosterWidth(@Nullable ForemanState s) {

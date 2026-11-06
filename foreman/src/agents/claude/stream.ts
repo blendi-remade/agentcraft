@@ -77,6 +77,13 @@ function diffFromInput(tool: string, input: Record<string, unknown>, cwd: string
   return undefined;
 }
 
+/** Compact token count for logs and the console: 950, 12k, 1.2M. */
+export function formatTokens(n: number): string {
+  if (n >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace(/\.0$/, '')}M`;
+  if (n >= 1_000) return `${Math.round(n / 1_000)}k`;
+  return String(n);
+}
+
 export class StreamMapper {
   private toolNames = new Map<string, string>();
   readonly stats: TurnStats = { isError: false, errors: [] };
@@ -88,6 +95,8 @@ export class StreamMapper {
     private agentId: string,
     private cwd: string,
     private role: 'lead' | 'worker',
+    /** report Claude's estimated USD cost; false for a gateway billed outside Anthropic */
+    private reportCost = true,
   ) {}
 
   handle(msg: SDKMessage): void {
@@ -157,7 +166,12 @@ export class StreamMapper {
       case 'result': {
         this.stats.subtype = msg.subtype;
         this.stats.isError = msg.is_error || msg.subtype !== 'success';
-        this.stats.costUsd = msg.total_cost_usd;
+        const usage = (msg as { usage?: { input_tokens?: number; output_tokens?: number; cache_read_input_tokens?: number; cache_creation_input_tokens?: number } }).usage;
+        if (usage) {
+          const tokens = (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + (usage.cache_read_input_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
+          if (tokens > 0) this.stats.tokens = tokens;
+        }
+        this.stats.costUsd = this.reportCost ? msg.total_cost_usd : undefined;
         this.stats.numTurns = msg.num_turns;
         this.stats.sessionId ??= msg.session_id;
         if (msg.subtype === 'success') {
@@ -168,7 +182,7 @@ export class StreamMapper {
           const joined = (msg.errors ?? []).join(' ');
           if (AUTH_RE.test(joined)) this.stats.authFailed = firstLine(joined, 200);
         }
-        const cost = typeof msg.total_cost_usd === 'number' ? ` · $${msg.total_cost_usd.toFixed(3)}` : '';
+        const cost = this.reportCost && typeof msg.total_cost_usd === 'number' ? ` · $${msg.total_cost_usd.toFixed(3)}` : this.stats.tokens ? ` · ${formatTokens(this.stats.tokens)} tokens` : '';
         fm.agentLog(id, this.stats.isError ? 'error' : 'result', `turn ${msg.subtype === 'success' && !msg.is_error ? 'complete' : `ended: ${msg.subtype}`} (${msg.num_turns} steps${cost})`);
         break;
       }

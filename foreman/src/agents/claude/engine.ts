@@ -19,8 +19,9 @@ export class ClaudeEngine implements Engine {
     private queryFn: typeof query = query,
   ) {}
 
-  model(role: Role): string {
-    return role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
+  model(role: Role, agentId?: string): string {
+    const override = agentId ? this.cfg.modelsByAgent?.[agentId.toLowerCase()] : undefined;
+    return override ?? (role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel);
   }
 
   authFailedMessage(detail: string): string {
@@ -61,13 +62,16 @@ export class ClaudeEngine implements Engine {
 
   async runTurn(spec: TurnSpec): Promise<TurnStats> {
     const { agentId, role, cwd, abort } = spec;
+    // OpenCode Go bills the plan allowance, not Anthropic USD; Claude Code's total_cost_usd is
+    // an Anthropic-price estimate there, so report tokens instead of a misleading dollar amount.
+    const reportCost = spec.env.AGENTCRAFT_OPENCODE_GO !== '1';
     const canUseTool: CanUseTool = async (toolName, input, opts) => {
       const r = await spec.permission(toolName, input, opts.signal, opts.title);
       return r.allow ? { behavior: 'allow', updatedInput: input } : { behavior: 'deny', message: r.message, ...(r.interrupt ? { interrupt: true } : {}) };
     };
     const options: Options = {
       cwd,
-      model: this.model(role),
+      model: this.model(role, agentId),
       effort: role === 'lead' ? this.cfg.leadEffort : this.cfg.effort,
       maxTurns: role === 'lead' ? this.cfg.maxTurnsLead : this.cfg.maxTurnsWorker,
       settingSources: [],
@@ -92,7 +96,7 @@ export class ClaudeEngine implements Engine {
       ...(spec.resume ? { resume: spec.resume } : {}),
       ...(this.cfg.maxBudgetUsdPerTurn ? { maxBudgetUsd: this.cfg.maxBudgetUsdPerTurn } : {}),
     };
-    const mapper = new StreamMapper(this.fm, agentId, cwd, role);
+    const mapper = new StreamMapper(this.fm, agentId, cwd, role, reportCost);
     const q = this.queryFn({ prompt: spec.prompt, options });
     // the abort signal alone lets a CLI finish what it is doing (seen in a real run: ~6 s of
     // further turns after /stop). close() force-ends the subprocess and its transports.

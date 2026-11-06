@@ -317,9 +317,9 @@ public final class ConsoleActions {
 		StringBuilder tb = new StringBuilder("tasks: ");
 		counts.forEach((k, v) -> tb.append(v).append(' ').append(k.wire()).append("  "));
 		ConsoleLog.add(Tone.INFO, tb.toString().strip());
-		String spend = spendLabel(s);
-		if (spend != null) {
-			ConsoleLog.add(Tone.INFO, "Claude API spend so far: " + spend + " (estimated, this profile)");
+		String usage = usageLabel(s);
+		if (usage != null) {
+			ConsoleLog.add(Tone.INFO, "API usage so far: " + usage + " (this profile)");
 		}
 		for (Agent a : s.agents().values()) {
 			String st = !a.isActive() ? "off shift" : a.isPaused() ? "paused" : a.state().wire().replace('_', ' ');
@@ -336,13 +336,29 @@ public final class ConsoleActions {
 		}
 	}
 
-	/** "$2.46" for the claude backend once something was spent, else null. */
-	static @Nullable String spendLabel(ForemanState s) {
+	/** "$2.46", "1.2M tokens", or "$2.46 · 1.2M tokens"; null when nothing is known. */
+	static @Nullable String usageLabel(ForemanState s) {
 		var st = s.status();
-		if (st == null || st.costUsd() == null || st.costUsd() <= 0) {
+		if (st == null) {
 			return null;
 		}
-		return String.format(java.util.Locale.ROOT, "$%.2f", st.costUsd());
+		String spend = st.costUsd() != null && st.costUsd() > 0
+			? String.format(java.util.Locale.ROOT, "$%.2f", st.costUsd()) : null;
+		String tokens = st.tokens() != null && st.tokens() > 0 ? formatTokens(st.tokens()) + " tokens" : null;
+		if (spend != null && tokens != null) {
+			return spend + " · " + tokens;
+		}
+		return spend != null ? spend : tokens;
+	}
+
+	static String formatTokens(long n) {
+		if (n >= 1_000_000) {
+			return String.format(java.util.Locale.ROOT, "%.1fM", n / 1_000_000.0).replace(".0M", "M");
+		}
+		if (n >= 1_000) {
+			return Math.round(n / 1_000.0) + "k";
+		}
+		return String.valueOf(n);
 	}
 
 	private static void repos(ForemanState s) {

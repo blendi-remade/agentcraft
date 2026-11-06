@@ -31,6 +31,8 @@ export interface SessionRecord {
   engine?: 'claude' | 'codex';
   turns: number;
   costUsd: number;
+  /** tokens reported by engines that do not provide USD cost (OpenCode Go, Codex) */
+  tokens?: number;
   updatedAt: number;
   /** why the last turn ended (for resume decisions) */
   lastResult?: string;

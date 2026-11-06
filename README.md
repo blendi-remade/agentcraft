@@ -228,6 +228,22 @@ checked by AgentCraft's policy (and asked in game when it needs you), the lead's
 `--codex-model`, and mix engines per agent with `--engines kit=codex,wren=claude`. Every agent's nameplate shows the
 model it runs, like **Opus 5.5** or **GPT-6 Astra**, so a mixed team is easy to read at a glance.
 
+**OpenCode Go.** On Linux and macOS, the Claude engine can run through
+[OpenCode Go](https://opencode.ai/v2/docs/console/go/) instead of an Anthropic key. The wrapper
+reads the key already stored by the `opencode` CLI and never prints it:
+
+```sh
+tools/launch-opencode.mjs --repo /path/to/your/repo
+tools/launch-opencode.mjs --dry-run                  # resolved config, key redacted
+```
+
+The default team is DeepSeek V4.1 Flash for Marlow, Muse Spark 1.3 Contributor for Juniper/Wren/Tove,
+Kimi K2.7 Code for Kit, and DeepSeek V4.1 Flash for Rowan. Use `--claude-models
+kit=kimi-k2.7-code,wren=qwen3.8-flash` to tune individual agents, `--model` for one model across the
+team, or `--no-per-agent-models` for one worker model. Because Go bills the plan allowance rather
+than Anthropic USD, the in-game counter shows tokens used (per turn and per profile) instead of
+Claude Code's misleading dollar estimate.
+
 **Your name.** The agents call you by your OS user name. Change it with
 `-ForemanArgs '--user-name','Sam'`, `AGENTCRAFT_USER_NAME`, or `{"userName": "Sam"}` in
 `~/.agentcraft/config.json`.

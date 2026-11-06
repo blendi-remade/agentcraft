@@ -220,6 +220,7 @@ export const ForemanStatus = z.object({
   speed: z.number().optional().describe('sim: speed multiplier'),
   showcase: z.boolean().optional().describe('sim: holding a static showcase state (`--showcase` or `--showcase late`)'),
   costUsd: z.number().optional().describe('claude: estimated spend of this profile (sum over all sessions, survives restarts)'),
+  tokens: z.number().optional().describe('tokens reported by engines without USD cost (OpenCode Go, Codex); sum over all sessions, survives restarts'),
   userName: z.string().optional().describe('the person the team works for, as the agents address them (UI: "<name> answered")'),
 });
 export type ForemanStatus = z.infer<typeof ForemanStatus>;

@@ -23,6 +23,43 @@ recorded by this launcher. Agent decisions show a desktop notification (Notifica
 macOS, `notify-send` on Linux). The screenshot QA command, `node tools/qa.mjs`, also uses this
 launcher on macOS and Linux.
 
+### OpenCode Go
+
+If you use [OpenCode Go](https://opencode.ai/v2/docs/console/go/), `launch-opencode.mjs` runs the
+Claude engine against OpenCode's Anthropic-compatible inference endpoint. It reads the active
+OpenCode Go key that is already stored by the `opencode` CLI (`opencode auth export`) and never
+prints it.
+
+```sh
+tools/launch-opencode.mjs --dry-run                  # show the resolved config, key redacted
+tools/launch-opencode.mjs --repo /path/to/repo       # recommended default team
+tools/launch-opencode.mjs --repo /path/to/repo --workers juniper
+tools/launch-opencode.mjs --repo /path/to/repo --model deepseek-v4.1-flash
+```
+
+Defaults:
+
+- Lead: `deepseek-v4.1-flash`
+- Juniper, Wren, Tove: `muse-spark-1.3-contributor`
+- Kit: `kimi-k2.7-code`
+- Rowan: `deepseek-v4.1-flash`
+
+`--claude-models kit=kimi-k2.7-code,wren=qwen3.8-flash` overrides individual agents;
+`--no-per-agent-models` uses one worker model for everyone; `--model` uses one model for the whole
+team. The wrapper sets `ANTHROPIC_BASE_URL=https://opencode.ai/inference/go/anthropic`,
+`ANTHROPIC_AUTH_TOKEN`, the `ANTHROPIC_DEFAULT_*_MODEL` aliases, and removes any
+`ANTHROPIC_API_KEY`/`CLAUDE_CODE_OAUTH_TOKEN` so Claude Code uses the Bearer token.
+
+`muse-spark-1.3-contributor` is a Contributor model: OpenCode's privacy settings must allow
+endpoints that train on request data. For sensitive repositories, use `glm-5.3-flash`,
+`qwen3.8-flash`, or `kimi-k2.7-code` instead. The optional Omarchy `ai-usagebar` plugin already
+reads the same OpenCode Go credential and shows the 5-hour, weekly, and monthly quota; AgentCraft's
+own counter shows the tokens used per turn and per profile.
+
+`launch-opencode.mjs` looks for Java 25 in `JAVA_HOME`, a mise Java install, or
+`/usr/lib/jvm/java-25-openjdk`; invoking `unix.mjs` directly still needs `JAVA_HOME` when the system
+JDK is newer.
+
 ### Your own launcher instance (Prism, MultiMC, ...)
 
 The mod also runs in a normal Fabric instance for Minecraft 26.3 with Fabric Loader 0.19.5+:

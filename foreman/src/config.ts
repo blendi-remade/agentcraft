@@ -15,6 +15,8 @@ export const PROJECT_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.
 export interface ClaudeConfig {
   leadModel: string;
   workerModel: string;
+  /** per-agent model overrides; agents not listed use leadModel / workerModel */
+  modelsByAgent?: Record<string, string>;
   effort: EffortLevel;
   leadEffort: EffortLevel;
   maxTurnsLead: number;
@@ -204,7 +206,7 @@ function effort(v: unknown, d: EffortLevel): EffortLevel {
 export const KNOWN_FLAGS = new Set([
   'home', 'backend', 'profile', 'user-name', 'use-claude-login', 'repo', 'workers', 'model', 'port', 'goal', 'autostart', 'reset', 'notify',
   'toast-silent', 'debug', 'quiet', 'allow-browser-origins', 'repo-poll-ms', 'merge-style', 'sign-merges',
-  'lead-model', 'worker-model', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
+  'lead-model', 'worker-model', 'claude-models', 'effort', 'lead-effort', 'max-turns', 'max-turns-lead', 'max-turns-worker',
   'max-concurrent', 'ci', 'max-budget', 'resume', 'lead-review', 'speed', 'seed', 'showcase', 'auto-answer',
   'ambient', 'lead-read-commands', 'lead-engine', 'worker-engine', 'engines', 'codex-path', 'codex-model', 'codex-lead-model',
   'codex-worker-model', 'codex-effort', 'codex-lead-effort',
@@ -225,6 +227,22 @@ function engineMap(v: unknown): Record<string, EngineName> {
     if (!agent || !/^[a-z0-9_-]+$/i.test(agent)) throw new Error(`bad --engines entry "${agent}=${String(engine)}" (use agent=engine, e.g. kit=codex)`);
     if (engine === undefined || engine === '') throw new Error(`no engine for ${agent} in --engines (use agent=engine, e.g. ${agent}=codex)`);
     out[agent.toLowerCase()] = engineName(engine, 'claude', `engine for ${agent}`);
+  }
+  return out;
+}
+
+/** "kit=kimi-k2.7-code,wren=muse-spark-1.3-contributor" (flag/env) or {"kit": "..."} (config.json) */
+function modelMap(v: unknown): Record<string, string> {
+  if (v === undefined || v === null || v === '') return {};
+  const pairs: Array<[string, unknown]> =
+    v && typeof v === 'object' && !Array.isArray(v)
+      ? Object.entries(v as Record<string, unknown>)
+      : list(v).map((e) => e.split('=').map((x) => x.trim()) as [string, string]);
+  const out: Record<string, string> = {};
+  for (const [agent, model] of pairs) {
+    if (!agent || !/^[a-z0-9_-]+$/i.test(agent)) throw new Error(`bad --claude-models entry "${agent}=${String(model)}" (use agent=model, e.g. kit=kimi-k2.7-code)`);
+    if (typeof model !== 'string' || !model.trim()) throw new Error(`no model for ${agent} in --claude-models (use agent=model, e.g. kit=kimi-k2.7-code)`);
+    out[agent.toLowerCase()] = model.trim();
   }
   return out;
 }
@@ -298,6 +316,7 @@ export function loadConfig(argv: string[], env: NodeJS.ProcessEnv = process.env)
     claude: {
       leadModel: str(flags['lead-model']) ?? model ?? str(env.AGENTCRAFT_LEAD_MODEL) ?? str(fileClaude.leadModel) ?? 'opus',
       workerModel: str(flags['worker-model']) ?? model ?? str(env.AGENTCRAFT_WORKER_MODEL) ?? str(fileClaude.workerModel) ?? 'sonnet',
+      modelsByAgent: modelMap(flags['claude-models'] ?? env.AGENTCRAFT_CLAUDE_MODELS ?? fileClaude.modelsByAgent),
       effort: effort(flags.effort ?? fileClaude.effort, 'medium'),
       leadEffort: effort(flags['lead-effort'] ?? flags.effort ?? fileClaude.leadEffort, 'medium'),
       maxTurnsLead: num(flags['max-turns-lead'] ?? flags['max-turns'] ?? fileClaude.maxTurnsLead, 40),
@@ -373,6 +392,9 @@ usage: npm run start -- [options]
                            AGENTCRAFT_USE_CLAUDE_LOGIN=1, config.json claude.useClaudeLogin)
   --model <m>              model for lead and workers (default lead: opus, workers: sonnet)
   --lead-model <m> / --worker-model <m>
+  --claude-models <agent=model,...>
+                           per-agent model overrides, e.g. kit=kimi-k2.7-code,juniper=muse-spark-1.3-contributor
+                           (env AGENTCRAFT_CLAUDE_MODELS, config.json claude.modelsByAgent)
   --effort low|medium|high|xhigh|max   (default medium)
   --max-turns <n>          turn cap per session run (default lead 40 / worker 80)
   --workers <n|ids>        team size or comma list (default juniper,kit,wren)
