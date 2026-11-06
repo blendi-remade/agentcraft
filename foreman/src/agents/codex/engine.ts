@@ -111,7 +111,7 @@ export class CodexEngine implements Engine {
     return isolated;
   }
 
-  model(role: Role): string {
+  model(role: Role, _agentId?: string): string {
     return (role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel) ?? this.configuredModel ?? 'default';
   }
 

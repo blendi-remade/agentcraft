@@ -26,6 +26,19 @@ describe('loadConfig argument checking', () => {
     expect(cfg.notify).toBe(false);
   });
 
+  it('reads per-agent claude models from flag, env and config.json', () => {
+    const cfg = load(['--claude-models', 'kit=kimi-k2.7-code,juniper=muse-spark-1.3-contributor']);
+    expect(cfg.claude.modelsByAgent).toEqual({ kit: 'kimi-k2.7-code', juniper: 'muse-spark-1.3-contributor' });
+
+    home = tempDir();
+    expect(loadConfig(['--home', home], { AGENTCRAFT_CLAUDE_MODELS: 'wren=qwen3.8-flash' }).claude.modelsByAgent).toEqual({ wren: 'qwen3.8-flash' });
+
+    fs.writeFileSync(path.join(home, 'config.json'), JSON.stringify({ claude: { modelsByAgent: { rowan: 'deepseek-v4.1-flash' } } }));
+    expect(loadConfig(['--home', home], {}).claude.modelsByAgent).toEqual({ rowan: 'deepseek-v4.1-flash' });
+
+    expect(() => load(['--claude-models', 'kit='])).toThrow(/no model for kit/);
+  });
+
   it('reads lead read commands as a comma list or a config.json array', () => {
     home = tempDir();
     const read = (args: string[], env = {}) => loadConfig(['--home', home!, ...args], env).claude.leadReadCommands;

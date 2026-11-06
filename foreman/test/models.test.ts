@@ -14,6 +14,14 @@ describe('modelLabel', () => {
     ['gpt-6-astra', 'GPT-6 Astra'],
     ['gpt-5.1-codex-mini', 'GPT-5.1 Codex Mini'],
     ['o4-mini', 'o4 Mini'],
+    ['deepseek-v4.1-flash', 'DeepSeek V4.1 Flash'],
+    ['deepseek-v4-pro', 'DeepSeek V4 Pro'],
+    ['muse-spark-1.3-contributor', 'Muse Spark 1.3'],
+    ['kimi-k2.7-code', 'Kimi K2.7 Code'],
+    ['glm-5.3-flash', 'GLM-5.3 Flash'],
+    ['qwen3.8-flash', 'Qwen3.8 Flash'],
+    ['minimax-m3.1-flash', 'MiniMax M3.1 Flash'],
+    ['mimo-v2.6-flash', 'MiMo V2.6 Flash'],
     ['my-local-model', 'my-local-model'],
   ])('%s -> %s', (model, label) => {
     expect(modelLabel(model)).toBe(label);

@@ -224,7 +224,7 @@ export class TeamBackend implements Backend {
     for (const a of this.fm.agents()) {
       const engine = this.engineFor(a.id);
       const reported = this.reportedModels.get(a.id);
-      const model = (reported?.engine === engine.id ? reported.label : undefined) ?? modelLabel(engine.model(a.id === LEAD ? 'lead' : 'worker')) ?? engine.label;
+      const model = (reported?.engine === engine.id ? reported.label : undefined) ?? modelLabel(engine.model(a.id === LEAD ? 'lead' : 'worker', a.id)) ?? engine.label;
       this.fm.setAgent(a.id, { engine: engine.id, model });
     }
   }
@@ -237,12 +237,19 @@ export class TeamBackend implements Backend {
   /** e.g. "Claude (lead opus, workers sonnet)" or "Claude lead opus · Codex workers gpt-5" */
   private teamLabel(): string {
     const lead = this.engineFor(LEAD);
-    const workers = [...new Set(this.team.map((w) => this.engineFor(w)))];
     // aliases as configured ("opus"), full model ids as display names ("claude-opus-5-5" -> "Opus 5.5")
-    const m = (e: Engine, role: Role) => (/^[a-z]+$/.test(e.model(role)) ? e.model(role) : (modelLabel(e.model(role)) ?? e.model(role)));
-    if (!workers.length || (workers.length === 1 && workers[0] === lead)) return `${lead.label} (lead ${m(lead, 'lead')}, workers ${m(lead, 'worker')})`;
-    if (workers.length === 1) return `${lead.label} lead ${m(lead, 'lead')} · ${workers[0]!.label} workers ${m(workers[0]!, 'worker')}`;
-    return `${lead.label} lead ${m(lead, 'lead')} · ${this.team.map((w) => `${this.fm.nameOf(w)} ${this.engineFor(w).label}`).join(', ')}`;
+    const m = (e: Engine, role: Role, agentId?: string) => {
+      const model = e.model(role, agentId);
+      return /^[a-z]+$/.test(model) ? model : (modelLabel(model) ?? model);
+    };
+    const overrides = this.cfg.modelsByAgent ?? {};
+    if (this.team.some((w) => overrides[w])) {
+      return `${lead.label} lead ${m(lead, 'lead', LEAD)} · ${this.team.map((w) => `${this.fm.nameOf(w)} ${m(this.engineFor(w), 'worker', w)}`).join(', ')}`;
+    }
+    const workers = [...new Set(this.team.map((w) => this.engineFor(w)))];
+    if (!workers.length || (workers.length === 1 && workers[0] === lead)) return `${lead.label} (lead ${m(lead, 'lead', LEAD)}, workers ${m(lead, 'worker')})`;
+    if (workers.length === 1) return `${lead.label} lead ${m(lead, 'lead', LEAD)} · ${workers[0]!.label} workers ${m(workers[0]!, 'worker')}`;
+    return `${lead.label} lead ${m(lead, 'lead', LEAD)} · ${this.team.map((w) => `${this.fm.nameOf(w)} ${this.engineFor(w).label}`).join(', ')}`;
   }
 
   private isStopped(agentId: string): boolean {
@@ -268,6 +275,8 @@ export class TeamBackend implements Backend {
     // the spend survives restarts: every session's cost is persisted, so the total is their sum
     const spent = Object.values(this.fm.store.data.sessions).reduce((sum, s) => sum + (s.costUsd || 0), 0);
     if (spent > 0) this.fm.setStatus({ costUsd: Math.round(spent * 1000) / 1000 });
+    const tokens = Object.values(this.fm.store.data.sessions).reduce((sum, s) => sum + (s.tokens || 0), 0);
+    if (tokens > 0) this.fm.setStatus({ tokens });
     this.showEngines();
     await this.checkAuth();
     this.showEngines(); // the auth check may have learned the configured model
@@ -783,7 +792,7 @@ export class TeamBackend implements Backend {
         const t = this.fm.tasks.require(job.taskId!);
         systemAppend = workerSystemPrompt(this.fm, agentId, this.fm.repos.requireWorktree(t.repoId!, t.worktree!));
       }
-      const model = engine.model(role);
+      const model = engine.model(role, agentId);
       this.fm.agentLog(agentId, 'text', `${resume ? 'Resuming' : 'Starting'} ${job.kind}${job.taskId ? ` ${job.taskId}` : ''} (${engine.id === 'claude' ? model : `${engine.label} ${model}`})`);
       if (job.kind === 'followup' || job.resumed) this.fm.agentLog(agentId, 'text', truncate(job.prompt, 400));
       const timer = setTimeout(() => this.abortTurn(entry, 'timeout'), TURN_TIMEOUT_MS);
@@ -898,6 +907,10 @@ export class TeamBackend implements Backend {
         this.lastCost.set(sessionId, stats.costUsd);
         s.costUsd = Math.max(s.costUsd, stats.costUsd);
         this.fm.setStatus({ costUsd: Math.round(((this.fm.status.costUsd ?? 0) + delta) * 1000) / 1000 });
+      }
+      if (typeof stats.tokens === 'number' && stats.tokens > 0) {
+        s.tokens = (s.tokens ?? 0) + stats.tokens;
+        this.fm.setStatus({ tokens: (this.fm.status.tokens ?? 0) + stats.tokens });
       }
       s.lastResult = stats.subtype;
     }
