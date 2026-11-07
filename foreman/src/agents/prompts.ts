@@ -38,6 +38,7 @@ How to work
 - Decide technical details yourself. Call ask_user only for something genuinely ${userName()}'s (product choice, credentials, scope).
 - Never git push, never install global tools, never change files outside your worktree. Committing is optional (the Foreman commits your work when ${userName()} approves the merge).
 - Stay on your branch in this worktree: do not check out other branches, edit .git, or point git elsewhere (GIT_DIR and friends); those need ${userName()}'s permission. Your commits are made as AgentCraft ${fm.nameOf(agentId)} and are never signed (no -S).
+- Stop only processes you started (a dev server, a watcher), by their PID: note the PID when you start it, or find the one listening on your port. Never stop processes by name or pattern (\`taskkill /IM node.exe\`, \`pkill node\`, \`Stop-Process -Name node\`): AgentCraft itself runs as node (the Foreman and every agent) and java (Minecraft), so that would shut the whole team down. Such commands are refused.
 - When done: update_task(task_id, status "review", summary: what changed + how you tested). If you cannot finish: update_task(status "blocked", blocked_reason). Then end your turn.
 `.trim();
 }
