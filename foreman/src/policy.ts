@@ -40,6 +40,7 @@ import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { GIT_REDIRECT_VARS } from './gitsafety.js';
+import { KILL_ADVICE, killTargets, protectedHit, stopsProtectedByQuery, stopsProtectedPort, type ProtectedProcess } from './procguard.js';
 import { isInsideOrEqual } from './util/fsx.js';
 
 export type Verdict =
@@ -64,6 +65,13 @@ export interface PolicyContext {
   tempDirs?: string[];
   /** lead only: command prefixes the user declared read-only, e.g. `bd show` */
   leadReadCommands?: string[];
+  /**
+   * AgentCraft's own processes (the Foreman, its parents, agent CLIs): kill commands that would
+   * stop one are refused, approval or not. node/java/claude/codex images are always protected.
+   */
+  protectedProcesses?: ProtectedProcess[];
+  /** the Foreman's port(s): `kill-port` / `fuser -k` on them is refused */
+  protectedPorts?: number[];
 }
 
 const READ_TOOLS = new Set(['Read', 'Grep', 'Glob', 'LS', 'NotebookRead']);
@@ -776,6 +784,20 @@ interface J {
 const ok = (reason: string, readOnly: boolean, extra: Partial<J> = {}): J => ({ asks: [], readOnly, reason, ...extra });
 const refuse = (reason: string): J => ({ deny: reason, asks: [], readOnly: false, reason });
 const need = (reason: string, key: string): J => ({ asks: [{ reason, key }], readOnly: false, reason });
+
+/** process killers: refused when they would stop AgentCraft itself (procguard.ts), else asked exactly */
+const KILL_CMDS = new Set(['kill', 'taskkill', 'pkill', 'killall', 'stop-process', 'spps']);
+
+function killVerdict(cmd: string, rest: string[], sc: SegCtx): J {
+  const t = killTargets(cmd, rest, isDynamic);
+  if (t.none) return ok(`${cmd} (stops nothing)`, true);
+  const hit = protectedHit(t, sc.env.ctx.protectedProcesses ?? []);
+  if (hit) return refuse(`Refused: ${hit}, and that would shut down AgentCraft. ${KILL_ADVICE}`);
+  if (t.everything) return refuse(`Refused: ${t.everything}, which includes AgentCraft itself. ${KILL_ADVICE}`);
+  if (t.unknown) return exact(sc.env, `stops processes (${cmd}) that cannot be checked: ${t.unknown}. Make sure it is not the AgentCraft Foreman (node) or Minecraft (java)`);
+  const what = [...t.pids.map((p) => `pid ${p}`), ...t.names.map((n) => `"${n}"`), ...t.patterns.map((p) => `matching "${p.text}"`), ...t.parents.map((p) => `children of pid ${p}`)].join(', ');
+  return exact(sc.env, `stops processes (${cmd} ${what})`);
+}
 
 /** Combine: any deny wins; asks add up; read-only only if all are. The last one's cwd/pathsOut win. */
 function merge(a: J, ...rest: Array<J | undefined>): J {
@@ -1566,6 +1588,7 @@ function classifyWords(cmd: string, cmdWord: string, rest: string[], sc: SegCtx,
     return merge(paths, need(`network access (${cmd} ${subs.join(' ')})`, `Bash:net:${cmd}:${subs.join(' ')}`));
   }
   if (NET_EXACT.has(cmd)) return exact(env, `network or remote access (${cmd})`);
+  if (KILL_CMDS.has(cmd)) return killVerdict(cmd, rest, sc);
   if (SYSTEM_CMDS.has(cmd)) return exact(env, `process or system command (${cmd})`);
   if (LINK_CMDS.has(cmd) || ((cmd === 'new-item' || cmd === 'ni') && rest.some((a) => /^(symboliclink|junction|hardlink)$/i.test(a)))) return exact(env, `${cmd} creates a link (links can lead out of the worktree)`);
 
@@ -2018,6 +2041,8 @@ function rootEnv(command: string, ctx: PolicyContext): Env {
 }
 
 export function classifyBash(command: string, ctx: PolicyContext): Verdict {
+  const stops = stopsProtectedByQuery(command) ?? stopsProtectedPort(command, ctx.protectedPorts ?? []);
+  if (stops) return { action: 'deny', reason: `Refused: ${stops}. ${KILL_ADVICE}` };
   const j = classifyCommand(command, ctx.cwd, rootEnv(command, ctx));
   if (j.deny) return { action: 'deny', reason: j.deny };
   const seen = new Set<string>();

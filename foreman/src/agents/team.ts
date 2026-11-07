@@ -29,6 +29,7 @@ import { ClientError, type Backend, type Foreman } from '../foreman.js';
 import { withGitSafety } from '../gitsafety.js';
 import { agentGitIdentity } from '../util/git.js';
 import { classifyToolUse, describeRuleKey, describeToolCall } from '../policy.js';
+import type { ProtectedProcess } from '../procguard.js';
 import type { BackendName, Decision, Goal, Task } from '../protocol.js';
 import { MERGE_OPTIONS, PERMISSION_OPTIONS } from '../protocol.js';
 import type { TestResult } from '../repos.js';
@@ -45,6 +46,45 @@ import { userName } from '../user.js';
 
 // policy: our own team tools are trusted (the Claude engine exposes them as this MCP server)
 const TEAM_MCP_SERVER = 'agentcraft';
+
+/**
+ * The Foreman's parents beyond its direct one (a launcher, a terminal), read once in the
+ * background: a tree kill of any of them (`taskkill /T`) would stop the Foreman too. Until the
+ * process table is read, only the direct parent (process.ppid) is known.
+ */
+let foremanAncestors: number[] = [];
+let ancestorsLoading: Promise<void> | undefined;
+export function loadForemanAncestors(): Promise<void> {
+  ancestorsLoading ??= processTable()
+    .then((table) => {
+      if (!table) return;
+      const parentOf = new Map(table.map((e) => [e.pid, e.ppid]));
+      const out: number[] = [];
+      for (let pid = process.ppid; pid > 0 && !out.includes(pid) && out.length < 32; pid = parentOf.get(pid) ?? 0) out.push(pid);
+      foremanAncestors = out;
+    })
+    .catch(() => undefined);
+  return ancestorsLoading;
+}
+
+/**
+ * AgentCraft's own processes, for the kill guard in the policy (procguard.ts): the Foreman, its
+ * parents, and the agent CLIs that are running now.
+ */
+export function protectedProcesses(o: { agentPids: Array<{ pid: number; who: string }> }): ProtectedProcess[] {
+  const self: ProtectedProcess = {
+    pid: process.pid,
+    what: 'the AgentCraft Foreman',
+    name: path.basename(process.execPath).replace(/\.exe$/i, '').toLowerCase(),
+    commandLine: [process.execPath, ...process.execArgv, ...process.argv.slice(1)].join(' '),
+  };
+  const parents = [...new Set([process.ppid, ...foremanAncestors])].filter((pid) => pid > 0 && pid !== process.pid);
+  return [
+    self,
+    ...parents.map((pid) => ({ pid, what: 'a parent of the AgentCraft Foreman' })),
+    ...o.agentPids.filter((a) => a.pid > 0).map((a) => ({ pid: a.pid, what: `${a.who}'s agent process` })),
+  ];
+}
 
 type JobKind = 'plan' | 'work' | 'review' | 'followup';
 type AbortReason = 'pause' | 'stop' | 'shutdown' | 'cancel' | 'timeout';
@@ -259,6 +299,7 @@ export class TeamBackend implements Backend {
   // ---- lifecycle ----------------------------------------------------------------------------
 
   async start(): Promise<void> {
+    void loadForemanAncestors();
     for (const a of this.fm.agents()) {
       const onTeam = (a.id === LEAD || this.team.includes(a.id)) && !this.isStopped(a.id);
       this.fm.setAgent(a.id, { active: onTeam });
@@ -678,6 +719,10 @@ export class TeamBackend implements Backend {
         alwaysAllow: this.fm.store.data.permissionRules[agentId] ?? [],
         mcpServer: TEAM_MCP_SERVER,
         leadReadCommands: this.cfg.leadReadCommands,
+        protectedProcesses: protectedProcesses({
+          agentPids: [...this.running.values()].flatMap((r) => (r.child?.pid ? [{ pid: r.child.pid, who: this.fm.nameOf(r.job.agentId) }] : [])),
+        }),
+        protectedPorts: this.fm.config.port > 0 ? [this.fm.config.port] : [],
       });
       if (verdict.action === 'allow') return { allow: true };
       if (verdict.action === 'deny') {
