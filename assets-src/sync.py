@@ -37,7 +37,8 @@ DST_DEFAULT = HERE.parent / "mod" / "src" / "main" / "resources" / "assets"
 
 
 def digest_bytes(b: bytes) -> str:
-    return hashlib.sha1(b).hexdigest()
+    # Digest di contenuto per il confronto degli asset, non firma crittografica.
+    return hashlib.sha1(b, usedforsecurity=False).hexdigest()
 
 
 def is_lang(rel: str) -> bool:
