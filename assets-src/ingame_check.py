@@ -209,7 +209,7 @@ def copy_mod(ref="HEAD"):
     r = subprocess.run(["git", "-C", str(REPO), "archive", "--format=tar", ref, "mod"], capture_output=True)
     if r.returncode == 0 and r.stdout:
         with tarfile.open(fileobj=io.BytesIO(r.stdout)) as tf:
-            tf.extractall(WORK)
+            tf.extractall(WORK, filter="data")
         print(f"mod/ copied from git {ref}")
     else:
         print("git archive failed, copying the working tree:", r.stderr.decode(errors="replace")[:200])
