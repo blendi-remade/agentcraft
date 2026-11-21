@@ -2,7 +2,9 @@
 from __future__ import annotations
 
 from common import PALETTE, hex2rgba, pc
-from skinlib import Skin  # noqa: F401  (re-export)
+from skinlib import Skin
+
+__all__ = ["E4", "E8", "E3x4", "E3x12", "E4x12", "H", "P", "Skin", "T", "blank", "faces", "legend_hair", "legend_skin", "row_only"]
 
 
 def T(group, name):

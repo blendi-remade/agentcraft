@@ -11,6 +11,7 @@ jobs.json = {
               "night": bool, "blocks": [{"block"|"model"|"inline": ..., "props": {}, "pos": [x,y,z]}]}]
 }
 """
+import importlib
 import json
 import os
 import sys
@@ -19,8 +20,8 @@ import bpy
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import mcblock  # noqa: E402
-import studio  # noqa: E402
+mcblock = importlib.import_module("mcblock")
+studio = importlib.import_module("studio")
 
 
 def add_entry(assets, b, name, pos=(0, 0, 0)):

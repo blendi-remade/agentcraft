@@ -18,11 +18,7 @@ BLOCKS below and documented in assets-src/README.md.
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent))
-from common import OUT, write_json  # noqa: E402
+from common import OUT, write_json
 
 NS = "agentcraft"
 MODELS = {}

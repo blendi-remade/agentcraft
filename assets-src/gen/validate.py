@@ -27,10 +27,8 @@ import json
 import sys
 from pathlib import Path
 
+from common import OUT, PALETTE
 from PIL import Image
-
-sys.path.insert(0, str(Path(__file__).parent))
-from common import OUT, PALETTE, ROOT  # noqa: E402
 
 VANILLA_PARENTS = {"minecraft:block/block", "minecraft:block/cube", "minecraft:block/cube_all",
                    "minecraft:block/cube_column", "minecraft:block/cube_bottom_top", "minecraft:block/orientable"}
@@ -121,8 +119,7 @@ def main():
     for p in (OUT / "blockstates").glob("*.json"):
         if f"block.agentcraft.{p.stem}" not in lang:
             problems.append(f"lang: block.agentcraft.{p.stem} missing")
-    sys.path.insert(0, str(Path(__file__).parent))
-    from skinlib import FACES, PARTS, face_rect  # noqa: E402
+    from skinlib import FACES, PARTS, face_rect
     cast = json.loads((OUT / "cast.json").read_text(encoding="utf-8"))["agents"]
     for a in cast:
         img = Image.open(OUT / "textures" / "entity" / "agent" / f"{a['id']}.png").convert("RGBA")
@@ -163,6 +160,7 @@ def blockstate_coverage():
     key matches; multipart -> at least one part applies. Also no variant key may use an
     undeclared property or value."""
     import itertools
+
     from models import PROPERTY_DOMAINS
     probs, combos = [], 0
     for block, dom in PROPERTY_DOMAINS.items():

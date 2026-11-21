@@ -6,13 +6,9 @@ python gen/portraits.py
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
+from common import OUT, ROOT, hex2rgba, pc, save_png, scale_nearest
 from PIL import Image
-
-sys.path.insert(0, str(Path(__file__).parent))
-from common import OUT, ROOT, hex2rgba, pc, save_png, scale_nearest  # noqa: E402
 
 
 def make(skin, ring):

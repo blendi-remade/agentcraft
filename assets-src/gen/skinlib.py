@@ -10,9 +10,8 @@ Face orientation conventions (texture space, matching vanilla ModelPart.Cuboid):
 """
 from __future__ import annotations
 
-from PIL import Image
-
 from common import paint_grid
+from PIL import Image
 
 # part -> (base_uv, overlay_uv, (w, h, d)) ; arm width depends on model
 _PARTS = {

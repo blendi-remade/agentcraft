@@ -6,7 +6,6 @@ written without timestamps so re-running a generator produces byte-identical fil
 from __future__ import annotations
 
 import json
-import os
 import random
 from pathlib import Path
 

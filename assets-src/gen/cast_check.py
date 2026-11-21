@@ -15,10 +15,8 @@ import itertools
 import json
 import math
 import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from common import PALETTE, ROOT, hex2rgba, mix, pal_hex, rgba2hex  # noqa: E402
+from common import PALETTE, ROOT, hex2rgba, mix, pal_hex, rgba2hex
 
 
 def _lin(c):
@@ -31,7 +29,8 @@ def lab(h):
     x = (r * 0.4124 + g * 0.3576 + b * 0.1805) / 0.95047
     y = r * 0.2126 + g * 0.7152 + b * 0.0722
     z = (r * 0.0193 + g * 0.1192 + b * 0.9505) / 1.08883
-    f = lambda t: t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116  # noqa: E731
+    def f(t):
+        return t ** (1 / 3) if t > 0.008856 else 7.787 * t + 16 / 116
     return 116 * f(y) - 16, 500 * (f(x) - f(y)), 200 * (f(y) - f(z))
 
 
@@ -91,7 +90,7 @@ def toward(h, target, ratio, bg):
 def toward_all(h, target, ratios):
     """Mix colour h toward target until contrast with every bg in ratios {bg_hex: ratio} holds."""
     c, t = hex2rgba(h), hex2rgba(target)
-    for k in range(0, 101):
+    for k in range(101):
         m = tuple(round(c[i] + (t[i] - c[i]) * k / 100) for i in range(3))
         hx = rgba2hex(m)
         if all(contrast(hx, bg) >= r for bg, r in ratios.items()):

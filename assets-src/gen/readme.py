@@ -6,12 +6,9 @@ from __future__ import annotations
 
 import fnmatch
 import json
-import sys
 from collections import OrderedDict
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from common import OUT, ROOT  # noqa: E402
+from common import OUT, ROOT
 
 # id: (properties, render layer the quads land in (automatic in 26.3), luminance, shape, notes)
 BLOCK_CONTRACT = OrderedDict([
@@ -162,12 +159,12 @@ def build():
     w("that Fabric Loom caches when the mod is built (nothing is downloaded): `gen/extract_ref.py` (called automatically")
     w("by `gen/sheets.py` / `gen/gui_sheet.py`) writes `artifacts/art/_ref/` (reference only, never shipped; gitignored)")
     w("and re-extracts when the jar changes. On a clean checkout, build the mod once first")
-    w("(`$env:GRADLE_USER_HOME='<repo>\.gradle-home'; cd mod; .\gradlew build`) or set `AGENTCRAFT_MC_JAR`.")
+    w(r"(`$env:GRADLE_USER_HOME='<repo>\.gradle-home'; cd mod; .\gradlew build`) or set `AGENTCRAFT_MC_JAR`.")
     w("")
     w("## In-game check")
     w("")
     w("```powershell")
-    w("assets-src\.venv\Scripts\python assets-src\ingame_check.py   # ~2-3 min, muted, never takes focus")
+    w(r"assets-src\.venv\Scripts\python assets-src\ingame_check.py   # ~2-3 min, muted, never takes focus")
     w("```")
     w("")
     w("Runs the real 26.3 client from a temp copy of `mod/` (OS temp dir; `mod/` itself is never touched) with a test")
@@ -265,8 +262,10 @@ def build():
     w("")
     w("| block id | properties | render layer (auto) | luminance | shape | notes |")
     w("|---|---|---|---|---|---|")
+    def esc(v):
+        return v.replace("|", "\\|")  # pipes inside cells break GFM tables
+
     for bid, (props, layer, lum, shape, notes) in BLOCK_CONTRACT.items():
-        esc = lambda v: v.replace("|", "\\|")  # noqa: E731  (pipes inside cells break GFM tables)
         w(f"| `agentcraft:{bid}` | `{esc(props)}` | {layer} | {esc(lum)} | {shape} | {esc(notes)} |")
     w("")
     w("## GUI kit")

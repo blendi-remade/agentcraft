@@ -23,12 +23,10 @@ import argparse
 import json
 import os
 import shutil
-import sys
 import zipfile
 from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from common import ART, PROJECT, ensure_dir  # noqa: E402
+from common import ART, PROJECT, ensure_dir
 
 REF = ART / "_ref"
 FLAT = ["calcite", "white_concrete", "stripped_oak_log", "stripped_oak_log_top", "birch_planks",

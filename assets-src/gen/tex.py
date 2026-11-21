@@ -1,9 +1,8 @@
 """Tiny pixel-texture toolkit for 16x16 block textures and GUI sprites."""
 from __future__ import annotations
 
-from PIL import Image
-
 from common import PALETTE, hex2rgba, paint_grid
+from PIL import Image
 
 CLEAR = (0, 0, 0, 0)
 

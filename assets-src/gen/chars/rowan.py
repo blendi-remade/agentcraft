@@ -1,7 +1,7 @@
 """ROWAN - refactorer & reviewer. Umber hair combed back into a low bun, full umber beard,
 mulberry henley with sleeves rolled to the elbow, tan leather workshop apron with brass rings
 and a pencil pocket, brass wristwatch, graphite trousers, walnut boots. Classic arms."""
-from chars.base import E4, E8, H, P, Skin, T, faces, legend_hair, legend_skin
+from chars.base import E4, E8, P, Skin, T, faces, legend_hair, legend_skin
 
 
 def build():

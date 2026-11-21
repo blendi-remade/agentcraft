@@ -11,8 +11,8 @@ UV mapping follows vanilla ModelPart.Cuboid (verified against the documented 64x
 """
 import math
 
-import bpy
 import bmesh
+import bpy
 
 TEX = 64.0
 
@@ -179,12 +179,12 @@ def skin_material(name, image, overlay=False, shading="pbr"):
         surf = mix.outputs["Shader"]
         try:
             mat.blend_method = "CLIP"
-        except Exception:
-            pass
+        except AttributeError as exc:
+            print(f"[agentcraft] blend_method non disponibile in questa versione di Blender: {exc}")
         try:
             mat.surface_render_method = "DITHERED"
-        except Exception:
-            pass
+        except AttributeError as exc:
+            print(f"[agentcraft] surface_render_method non disponibile in questa versione di Blender: {exc}")
         mat.use_backface_culling = False
     else:
         mat.use_backface_culling = True

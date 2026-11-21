@@ -2,7 +2,7 @@
 round walnut architect's spectacles, a yellow pencil tucked into the hair above his right ear,
 long indigo chore coat (tails on the leg layer), cream shirt + ink tie, brass lead badge,
 graphite trousers, walnut brogues. Classic arms."""
-from chars.base import E4, E8, H, P, Skin, T, faces, legend_hair, legend_skin
+from chars.base import E4, E8, P, Skin, T, faces, legend_hair, legend_skin
 
 
 def build():

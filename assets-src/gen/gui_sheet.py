@@ -6,13 +6,9 @@ so the mock shows exactly how labels will rasterise in game.
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
+from common import ART, OUT, PROJECT, ROOT, hex2rgba, save_png, scale_nearest
 from PIL import Image, ImageDraw, ImageFilter
-
-sys.path.insert(0, str(Path(__file__).parent))
-from common import ART, OUT, PALETTE, PROJECT, ROOT, hex2rgba, save_png, scale_nearest  # noqa: E402
 
 H = hex2rgba
 KIT = OUT / "textures" / "gui" / "sprites" / "kit"

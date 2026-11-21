@@ -5,12 +5,9 @@ python gen/ui_style.py
 from __future__ import annotations
 
 import json
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from cast_check import contrast, toward_all  # noqa: E402
-from common import OUT, PALETTE, ROOT, hex2rgba, mix, pal_hex, rgba2hex, write_json  # noqa: E402
+from cast_check import contrast, toward_all
+from common import OUT, PALETTE, ROOT, hex2rgba, mix, pal_hex, rgba2hex, write_json
 
 # Every token is a palette entry (by name), nudged toward ink (both the lit paper monitor screen
 # and paper GUI are light surfaces; cream for the dark ink UI) only as far as needed to reach its
