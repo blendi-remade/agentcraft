@@ -9,10 +9,20 @@ import subprocess
 import sys
 from pathlib import Path
 
+from common import (
+    ART,
+    OUT,
+    PALETTE,
+    PROJECT,
+    ROOT,
+    ensure_dir,
+    hex2rgba,
+    mix,
+    pc,
+    save_png,
+    scale_nearest,
+)
 from PIL import Image, ImageDraw, ImageFont
-
-sys.path.insert(0, str(Path(__file__).parent))
-from common import ART, OUT, PALETTE, PROJECT, ROOT, ensure_dir, hex2rgba, mix, pc, save_png, scale_nearest  # noqa: E402
 
 BLENDER = r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
 VANILLA_ASSETS = PROJECT / "artifacts" / "art" / "_ref" / "vanilla_assets" / "minecraft"
@@ -62,7 +72,7 @@ def title_block(img, title, subtitle):
 
 # ======================================================================= portraits
 def portraits():
-    import portraits as _p   # shipped asset: lives in gen/portraits.py
+    import portraits as _p  # shipped asset: lives in gen/portraits.py
     _p.build()
 
 
@@ -251,10 +261,11 @@ def vignette_blocks():
             e["inline"] = inline
         B.append(e)
 
-    V = lambda parent, **tx: _inline(parent, {k: f"minecraft:block/{v}" for k, v in tx.items()})  # noqa: E731
+    def V(parent, **tx):
+        return _inline(parent, {k: f"minecraft:block/{v}" for k, v in tx.items()})
     # floor
-    for x in range(0, 10):
-        for z in range(0, 7):
+    for x in range(10):
+        for z in range(7):
             if x >= 7:
                 add((x, 0, z), inline=V("cube_all", all="birch_planks"))
             elif z <= 1:
@@ -272,7 +283,7 @@ def vignette_blocks():
                 add((x, y, 7), inline=V("cube_all", all="calcite"))
             else:
                 add((x, y, 7), "agentcraft:plaster_frame" if y == 5 else "agentcraft:plaster_panel")
-    for z in range(0, 7):
+    for z in range(7):
         add((10, 1, z), "agentcraft:walnut_panel")
         add((10, 2, z), "agentcraft:walnut_trim")
         for y in (3, 4, 5):
@@ -291,8 +302,6 @@ def vignette_blocks():
             add((9, y, z), "agentcraft:monitor", {"facing": "west", "lit": "false", "up": u, "down": dn,
                                                  "left": l, "right": r})
     # task board 3x2 on the wall
-    for x in (4, 5, 7, 8):
-        pass
     for x, l, r in ((5, "false", "true"), (4, "true", "false")):
         for y, u, dn in ((4, "false", "true"), (3, "true", "false")):
             add((x, y, 6), "agentcraft:task_board", {"facing": "north", "up": u, "down": dn, "left": l, "right": r})

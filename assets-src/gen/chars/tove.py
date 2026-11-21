@@ -1,7 +1,7 @@
 """TOVE - archivist & QA. Golden flax centre-parted hair in twin braids over the shoulders with
 ice-blue ties, deep-blue eyes and rosy cheeks, ice-blue Nordic sweater with a cream snowflake
 yoke, graphite trousers, cream wool socks peeking from walnut boots. Slim arms."""
-from chars.base import E3x4, E8, H, P, Skin, T, faces, legend_hair, legend_skin
+from chars.base import E8, E3x4, P, Skin, T, faces, legend_hair, legend_skin
 
 
 def build():

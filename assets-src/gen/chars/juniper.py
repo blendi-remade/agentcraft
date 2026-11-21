@@ -1,7 +1,7 @@
 """JUNIPER - researcher. Big espresso-black coils (falling past the nape) held back by a violet
 headband, brass earrings, violet cardigan over a cream turtleneck, ink wide trousers, clay-dark
 loafers. Slim arms."""
-from chars.base import E3x4, E8, H, P, Skin, T, faces, legend_hair, legend_skin
+from chars.base import E8, E3x4, P, Skin, T, faces, legend_hair, legend_skin
 
 
 def build():

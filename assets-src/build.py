@@ -12,9 +12,10 @@ from __future__ import annotations
 
 import argparse
 import hashlib
+import importlib
 import os
-import subprocess
 import shutil
+import subprocess
 import sys
 import time
 from pathlib import Path
@@ -22,15 +23,16 @@ from pathlib import Path
 HERE = Path(__file__).resolve().parent
 sys.path.insert(0, str(HERE / "gen"))
 
-import blocks  # noqa: E402
-import cast_check  # noqa: E402
-import gui  # noqa: E402
-import models  # noqa: E402
-import portraits  # noqa: E402
-import sheets  # noqa: E402
-import skins  # noqa: E402
-import ui_style  # noqa: E402
-from common import OUT, ROOT, write_json  # noqa: E402
+blocks = importlib.import_module("blocks")
+cast_check = importlib.import_module("cast_check")
+gui = importlib.import_module("gui")
+models = importlib.import_module("models")
+portraits = importlib.import_module("portraits")
+sheets = importlib.import_module("sheets")
+skins = importlib.import_module("skins")
+ui_style = importlib.import_module("ui_style")
+common = importlib.import_module("common")
+OUT, ROOT, write_json = common.OUT, common.ROOT, common.write_json
 
 
 def build_assets():

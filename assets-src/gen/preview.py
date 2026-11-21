@@ -12,11 +12,9 @@ import subprocess
 import sys
 from pathlib import Path
 
+import portraits
+from common import ART, OUT, ROOT, ensure_dir, hex2rgba, scale_nearest
 from PIL import Image, ImageDraw
-
-sys.path.insert(0, str(Path(__file__).parent))
-from common import ART, OUT, ROOT, ensure_dir, hex2rgba, scale_nearest  # noqa: E402
-import portraits  # noqa: E402
 
 BLENDER = r"C:\Program Files\Blender Foundation\Blender 5.2\blender.exe"
 HEAD_VIEWS = ("h_front", "h_f34", "h_f34l", "h_right", "h_left", "h_back", "h_b34", "h_top", "h_desk")

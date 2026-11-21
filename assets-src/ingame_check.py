@@ -67,7 +67,8 @@ def resolve(block, props):
 
 
 def mon(lit, up, down, left, right):
-    b = lambda v: "true" if v else "false"  # noqa: E731
+    def b(v):
+        return "true" if v else "false"
     return ("monitor", {"facing": "north", "lit": b(lit), "up": b(up), "down": b(down), "left": b(left), "right": b(right)})
 
 

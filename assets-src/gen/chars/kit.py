@@ -1,7 +1,7 @@
 """KIT - builder & tester. Graphite rib-knit beanie with a cobalt stripe and cream pompom, cream
 over-ear headphones with brass sliders, ginger hair + freckles, cobalt hoodie (hood on the back layer), walnut cargo trousers,
 cream sneakers. Classic arms."""
-from chars.base import E4, E8, H, P, Skin, T, faces, legend_hair, legend_skin
+from chars.base import E4, E8, P, Skin, T, faces, legend_hair, legend_skin
 
 
 def build():

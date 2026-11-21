@@ -1,7 +1,7 @@
 """WREN - interface designer. Ink-black blunt bob with heavy bangs, a rose beret worn tilted,
 rosy cheeks, rose dungarees with brass buckles over a cream/ink breton tee, ink ankle boots.
 Slim arms."""
-from chars.base import E3x4, E8, H, P, Skin, T, faces, legend_hair, legend_skin
+from chars.base import E8, E3x4, P, Skin, T, faces, legend_hair, legend_skin
 
 
 def build():

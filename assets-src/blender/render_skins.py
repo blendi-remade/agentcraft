@@ -6,8 +6,8 @@ jobs.json = {"out_dir": str, "size": [w, h], "samples": int,
                        "views": ["front","right","back","left","threequarter","hero"]}]}
 Writes <out_dir>/<name>_<view>.png with transparent background.
 """
+import importlib
 import json
-import math
 import os
 import sys
 
@@ -15,8 +15,8 @@ import bpy
 from mathutils import Vector
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
-import mcplayer  # noqa: E402
-import studio  # noqa: E402
+mcplayer = importlib.import_module("mcplayer")
+studio = importlib.import_module("studio")
 
 HERO_POSE = {
     "head": (0, 0, -12),       # look slightly to camera-left

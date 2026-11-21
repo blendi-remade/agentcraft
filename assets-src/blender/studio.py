@@ -11,15 +11,18 @@ def reset_scene():
 
 def setup_render(scene, w, h, samples=64):
     scene.render.engine = "CYCLES"
-    try:
-        prefs = bpy.context.preferences.addons["cycles"].preferences
+    addon = bpy.context.preferences.addons.get("cycles")
+    prefs = addon.preferences if addon is not None else None
+    if prefs is not None and hasattr(prefs, "compute_device_type") and hasattr(prefs, "get_devices"):
         prefs.compute_device_type = "OPTIX"
         prefs.get_devices()
+        available = [d for d in prefs.devices if d.type == "OPTIX"]
         for d in prefs.devices:
-            d.use = d.type == "OPTIX"
-        scene.cycles.device = "GPU"
-    except Exception as e:  # CPU fallback keeps the script portable
-        print("GPU setup failed, using CPU:", e)
+            d.use = d in available
+        if available:
+            scene.cycles.device = "GPU"
+        else:
+            print("GPU setup: nessun dispositivo OPTIX, uso la CPU")
     scene.cycles.samples = samples
     scene.cycles.use_denoising = True
     scene.cycles.max_bounces = 6

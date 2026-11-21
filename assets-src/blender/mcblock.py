@@ -12,8 +12,8 @@ import json
 import math
 import os
 
-import bpy
 import bmesh
+import bpy
 
 VANILLA = {
     "minecraft:block/block": {},
@@ -123,8 +123,8 @@ class Assets:
         nt.links.new(mix.outputs["Shader"], out.inputs["Surface"])
         try:
             mat.blend_method = "CLIP"
-        except Exception:
-            pass
+        except AttributeError as exc:
+            print(f"[agentcraft] blend_method non disponibile in questa versione di Blender: {exc}")
         self.materials[key] = mat
         return mat
 

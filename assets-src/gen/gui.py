@@ -13,12 +13,9 @@ python gen/gui.py
 from __future__ import annotations
 
 import math
-import sys
-from pathlib import Path
 
-sys.path.insert(0, str(Path(__file__).parent))
-from common import OUT, PALETTE, hex2rgba, mix, pal_hex, pc, save_png, write_json  # noqa: E402
-from tex import CLEAR, from_grid, new  # noqa: E402
+from common import OUT, PALETTE, hex2rgba, mix, pal_hex, pc, save_png, write_json
+from tex import CLEAR, from_grid, new
 
 H = hex2rgba
 SPRITES = {}   # name -> (img, meta)
@@ -202,9 +199,7 @@ def buttons_tabs():
     px = act.load()
     for y in range(h):
         for x in range(w):
-            if x in (0, w - 1):
-                c = EDGE
-            elif y == 0:
+            if x in (0, w - 1) or y == 0:
                 c = EDGE
             elif y in (1, 2):
                 c = CL[1] if y == 1 else CL[2]

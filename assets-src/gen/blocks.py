@@ -8,12 +8,8 @@ python gen/blocks.py   -> out/assets/agentcraft/textures/block/*.png
 """
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
-sys.path.insert(0, str(Path(__file__).parent))
-from common import OUT, PALETTE, hex2rgba, mix, pc, save_png  # noqa: E402
-from tex import CLEAR, alpha_mask, from_grid, grid, hf, hsh, new, rect, tones  # noqa: E402
+from common import OUT, PALETTE, hex2rgba, mix, pc, save_png
+from tex import CLEAR, alpha_mask, from_grid, grid, hsh, new, rect, tones
 
 W = tones("walnut")      # 0 lightest .. 5 darkest
 O = tones("oak")         # 0 light .. 4 dark
@@ -221,9 +217,7 @@ def monitor_textures():
             d = x + y
             if d == 7 and x <= 5:
                 glint.putpixel((x, y), GR[1])
-            elif d in (6, 8) and 2 <= x <= 5 and y <= 6:
-                glint.putpixel((x, y), so[0])
-            elif d == 11 and 4 <= x <= 7 and y <= 7:
+            elif d in (6, 8) and 2 <= x <= 5 and y <= 6 or d == 11 and 4 <= x <= 7 and y <= 7:
                 glint.putpixel((x, y), so[0])
     reg("monitor_screen_off_glint", glint)
     # screen on: warm charcoal glass (palette screen_glow) with faint 1-texel scanlines, rendered
