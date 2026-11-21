@@ -5,8 +5,6 @@ import com.google.gson.GsonBuilder;
 import com.google.gson.JsonElement;
 import com.google.gson.JsonObject;
 import com.google.gson.TypeAdapter;
-import com.google.gson.TypeAdapterFactory;
-import com.google.gson.reflect.TypeToken;
 import com.google.gson.stream.JsonReader;
 import com.google.gson.stream.JsonToken;
 import com.google.gson.stream.JsonWriter;
@@ -19,7 +17,22 @@ import java.util.Map;
 public final class ForemanJson {
 	public static final Gson GSON = new GsonBuilder()
 		.disableHtmlEscaping()
-		.registerTypeAdapterFactory(new WireEnumFactory())
+		.registerTypeAdapter(Protocol.AgentState.class, wireEnum(Protocol.AgentState.class))
+		.registerTypeAdapter(Protocol.Station.class, wireEnum(Protocol.Station.class))
+		.registerTypeAdapter(Protocol.AgentRole.class, wireEnum(Protocol.AgentRole.class))
+		.registerTypeAdapter(Protocol.TaskStatus.class, wireEnum(Protocol.TaskStatus.class))
+		.registerTypeAdapter(Protocol.CiStatus.class, wireEnum(Protocol.CiStatus.class))
+		.registerTypeAdapter(Protocol.LogKind.class, wireEnum(Protocol.LogKind.class))
+		.registerTypeAdapter(Protocol.DecisionKind.class, wireEnum(Protocol.DecisionKind.class))
+		.registerTypeAdapter(Protocol.DecisionStatus.class, wireEnum(Protocol.DecisionStatus.class))
+		.registerTypeAdapter(Protocol.GoalStatus.class, wireEnum(Protocol.GoalStatus.class))
+		.registerTypeAdapter(Protocol.FeedKind.class, wireEnum(Protocol.FeedKind.class))
+		.registerTypeAdapter(Protocol.NotifyLevel.class, wireEnum(Protocol.NotifyLevel.class))
+		.registerTypeAdapter(Protocol.WorktreeStatus.class, wireEnum(Protocol.WorktreeStatus.class))
+		.registerTypeAdapter(Protocol.BackendName.class, wireEnum(Protocol.BackendName.class))
+		.registerTypeAdapter(Protocol.AuthStatus.class, wireEnum(Protocol.AuthStatus.class))
+		.registerTypeAdapter(Protocol.DiffFileStatus.class, wireEnum(Protocol.DiffFileStatus.class))
+		.registerTypeAdapter(Protocol.DiffLineKind.class, wireEnum(Protocol.DiffLineKind.class))
 		.create();
 
 	private ForemanJson() {
@@ -29,50 +42,40 @@ public final class ForemanJson {
 		return GSON.fromJson(json, type);
 	}
 
-	/** Deserialize wire enums by lower-case name; unknown values become the enum's UNKNOWN constant (or null). */
-	private static final class WireEnumFactory implements TypeAdapterFactory {
-		@Override
-		@SuppressWarnings({"unchecked", "rawtypes"})
-		public <T> TypeAdapter<T> create(Gson gson, TypeToken<T> type) {
-			Class<? super T> raw = type.getRawType();
-			if (!raw.isEnum() || !Protocol.Wire.class.isAssignableFrom(raw)) {
-				return null;
+	/**
+	 * Wire enums deserialize by lower-case name; unknown values become the enum's UNKNOWN
+	 * constant (or null). The generic bound keeps the cast-free and warning-free: no
+	 * unchecked cast from a raw TypeAdapter is needed.
+	 */
+	private static <E extends Enum<E> & Protocol.Wire> TypeAdapter<E> wireEnum(Class<E> enumType) {
+		Map<String, E> byWire = new HashMap<>();
+		E unknown = null;
+		for (E constant : enumType.getEnumConstants()) {
+			byWire.put(constant.name().toLowerCase(Locale.ROOT), constant);
+			if (constant.name().equals("UNKNOWN")) {
+				unknown = constant;
 			}
-			Map<String, Enum<?>> byWire = new HashMap<>();
-			Enum<?> unknown = null;
-			for (Object c : raw.getEnumConstants()) {
-				Enum<?> e = (Enum<?>) c;
-				byWire.put(e.name().toLowerCase(Locale.ROOT), e);
-				if (e.name().equals("UNKNOWN")) {
-					unknown = e;
-				}
-			}
-			final Enum<?> fallback = unknown;
-			return (TypeAdapter<T>) new TypeAdapter<Enum<?>>() {
-				@Override
-				public void write(JsonWriter out, Enum<?> value) throws IOException {
-					if (value == null) {
-						out.nullValue();
-					} else {
-						out.value(((Protocol.Wire) value).wire());
-					}
-				}
-
-				@Override
-				public Enum<?> read(JsonReader in) throws IOException {
-					if (in.peek() == JsonToken.NULL) {
-						in.nextNull();
-						return null;
-					}
-					if (in.peek() != JsonToken.STRING) {
-						in.skipValue();
-						return fallback;
-					}
-					Enum<?> e = byWire.get(in.nextString().toLowerCase(Locale.ROOT));
-					return e != null ? e : fallback;
-				}
-			}.nullSafe();
 		}
+		final E fallback = unknown;
+		return new TypeAdapter<E>() {
+			@Override
+			public void write(JsonWriter out, E value) throws IOException {
+				out.value(value.wire());
+			}
+
+			@Override
+			public E read(JsonReader in) throws IOException {
+				if (in.peek() == JsonToken.NULL) {
+					in.nextNull();
+					return null;
+				}
+				if (in.peek() != JsonToken.STRING) {
+					in.skipValue();
+					return fallback;
+				}
+				return byWire.getOrDefault(in.nextString().toLowerCase(Locale.ROOT), fallback);
+			}
+		}.nullSafe();
 	}
 
 	/** Small helper to build outgoing messages: {@code msg("goal.submit").put("text", t).json()}. */
