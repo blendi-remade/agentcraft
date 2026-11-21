@@ -1,0 +1,52 @@
+stages:
+  - verify
+
+variables:
+  GIT_DEPTH: "20"
+
+.node_cache: &node_cache
+  key:
+    files:
+      - foreman/package-lock.json
+  paths:
+    - foreman/node_modules/
+
+# Foreman (TypeScript): installazione riproducibile, tipi, test e audit delle dipendenze.
+foreman:
+  stage: verify
+  image: node:22-bookworm-slim
+  cache:
+    <<: *node_cache
+    policy: pull-push
+  before_script:
+    - cd foreman
+  script:
+    - npm ci
+    - npm run typecheck
+    - npm test
+    - npm audit --audit-level=low
+
+# Mod Fabric (Java 25): test JUnit del wrapper Gradle, senza eccezioni o job opzionali.
+mod:
+  stage: verify
+  image: eclipse-temurin:25-jdk
+  cache:
+    key: gradle
+    paths:
+      - .gradle/
+      - mod/.gradle/
+  script:
+    - cd mod
+    - chmod +x gradlew
+    - ./gradlew test --no-daemon
+
+# Asset generator (Python): compilazione, SAST e SCA. out/ contiene solo artefatti generati.
+assets:
+  stage: verify
+  image: python:3.13-slim
+  before_script:
+    - python -m pip install --no-cache-dir -r assets-src/requirements.txt bandit pip-audit
+  script:
+    - python -m compileall -q assets-src
+    - bandit -q -r assets-src -x assets-src/out
+    - pip-audit -r assets-src/requirements.txt
