@@ -24,8 +24,17 @@ import type { AgentTool } from '../tools.js';
 import { CODEX_NOT_FOUND, findCodex } from './find.js';
 import { AppServer } from './rpc.js';
 import { CodexStreamMapper, shellCommand } from './stream.js';
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
+import {
+  AccountReadSchema,
+  ConfigReadSchema,
+  NotificationSchema,
+  RequestSchema,
+  ThreadSchema,
+  TurnSchema,
+  parsed,
+  required,
+  type UserConfig,
+} from './wire.js';
 
 /** Codex features an agent thread does not get. */
 const OFF_FEATURES = [
@@ -130,11 +139,11 @@ export class CodexEngine implements Engine {
     const server = new AppServer(bin, { cwd: os.homedir(), env: this.serverEnv(process.env), ...(this.opts.args ? { args: this.opts.args } : {}) });
     try {
       await this.initialize(server);
-      const cfg = await server.request<any>('config/read', {}, 30_000).catch(() => undefined);
-      if (typeof cfg?.config?.model === 'string') this.configuredModel = cfg.config.model;
-      const r = await server.request<any>('account/read', {}, 30_000);
-      const a = r?.account;
-      if (!a && r?.requiresOpenaiAuth !== false) return { ok: false, message: 'Codex is not logged in. Run `codex login` (ChatGPT or an OpenAI API key), then restart the Foreman. The sim backend still works.' };
+      const cfg = parsed(ConfigReadSchema, await server.request('config/read', {}, 30_000).catch(() => undefined), {});
+      if (typeof cfg.config?.model === 'string') this.configuredModel = cfg.config.model;
+      const r = parsed(AccountReadSchema, await server.request('account/read', {}, 30_000), {});
+      const a = r.account;
+      if (!a && r.requiresOpenaiAuth !== false) return { ok: false, message: 'Codex is not logged in. Run `codex login` (ChatGPT or an OpenAI API key), then restart the Foreman. The sim backend still works.' };
       const account = a?.type === 'chatgpt' ? `ChatGPT${a.planType ? ` ${a.planType}` : ''}` : a?.type === 'apiKey' ? 'OpenAI API key' : a?.type === 'amazonBedrock' ? 'Amazon Bedrock' : 'ok';
       return { ok: true, account };
     } catch (e) {
@@ -145,7 +154,7 @@ export class CodexEngine implements Engine {
   }
 
   /** Config overrides for an agent thread (see the header). `userConfig`: the effective config. */
-  private threadConfig(userConfig: any, spec: TurnSpec, serverEnv: NodeJS.ProcessEnv): Record<string, unknown> {
+  private threadConfig(userConfig: UserConfig | null | undefined, spec: TurnSpec, serverEnv: NodeJS.ProcessEnv): Record<string, unknown> {
     const off = (names: string[]) => Object.fromEntries(names.map((n) => [n, { enabled: false }]));
     const effort = spec.role === 'lead' ? this.cfg.leadEffort : this.cfg.effort;
     return {
@@ -182,14 +191,15 @@ export class CodexEngine implements Engine {
     let finish!: () => void;
     const finished = new Promise<void>((r) => (finish = r));
 
-    server.onNotification((method, params: any) => {
+    server.onNotification((method, params) => {
+      const note = parsed(NotificationSchema, params, {});
       // only our own thread reaches the world (Codex could start helper threads of its own)
-      if (params?.threadId && threadId && params.threadId !== threadId) return;
+      if (note.threadId && threadId && note.threadId !== threadId) return;
       if (abort.signal.aborted) return;
       mapper.handle(method, params);
-      if (method === 'turn/completed' && (!turnId || params?.turn?.id === turnId)) finish();
+      if (method === 'turn/completed' && (!turnId || note.turn?.id === turnId)) finish();
     });
-    server.onRequest((method, params) => this.answer(method, params as any, spec, () => threadId, mapper, tools));
+    server.onRequest((method, params) => this.answer(method, params, spec, () => threadId, mapper, tools));
 
     const onAbort = () => {
       if (threadId && turnId) server.request('turn/interrupt', { threadId, turnId }, 5_000).catch(() => undefined);
@@ -202,7 +212,8 @@ export class CodexEngine implements Engine {
 
     try {
       await this.initialize(server);
-      const userConfig = (await server.request<any>('config/read', { cwd }, 30_000).catch(() => undefined))?.config;
+      const configRead = parsed(ConfigReadSchema, await server.request('config/read', { cwd }, 30_000).catch(() => undefined), {});
+      const userConfig = configRead.config;
       if (typeof userConfig?.model === 'string') this.configuredModel ??= userConfig.model;
       const model = role === 'lead' ? this.cfg.leadModel : this.cfg.workerModel;
       const dynamicTools = spec.tools.map((t) => ({ type: 'function', name: t.name, description: t.description, inputSchema: z.toJSONSchema(z.object(t.shape)) }));
@@ -215,25 +226,27 @@ export class CodexEngine implements Engine {
         dynamicTools,
         ...(model ? { model } : {}),
       };
-      let started: any;
+      let started: z.infer<typeof ThreadSchema> | undefined;
       if (spec.resume) {
-        started = await server.request<any>('thread/resume', { threadId: spec.resume, ...thread }, 60_000).catch((e) => {
+        const resumed = await server.request('thread/resume', { threadId: spec.resume, ...thread }, 60_000).catch((e) => {
           this.fm.log.warn(`${agentId}: could not resume Codex thread ${spec.resume} (${errorText(e)}); starting a new one`);
           return undefined;
         });
+        if (resumed) started = required(ThreadSchema, resumed, 'thread/resume');
       }
       if (!started) {
-        started = await server.request<any>('thread/start', { ...thread, serviceName: 'agentcraft' }, 60_000);
+        started = required(ThreadSchema, await server.request('thread/start', { ...thread, serviceName: 'agentcraft' }, 60_000), 'thread/start');
         const task = this.fm.agent(agentId)?.taskId;
         server.request('thread/name/set', { threadId: started.thread.id, name: `AgentCraft · ${this.fm.nameOf(agentId)}${task ? ` · ${task}` : ''}` }, 10_000).catch(() => undefined);
       }
-      threadId = started.thread.id as string;
+      threadId = started.thread.id;
       mapper.stats.sessionId = threadId;
       spec.onSession(threadId);
-      if (typeof started.model === 'string' && started.model) spec.onModel?.(started.model);
+      const startedModel = started.model;
+      if (typeof startedModel === 'string' && startedModel) spec.onModel?.(startedModel);
       if (abort.signal.aborted) return mapper.stats;
-      const turn = await server.request<any>('turn/start', { threadId, input: [{ type: 'text', text: spec.prompt, text_elements: [] }] }, 60_000);
-      turnId = turn?.turn?.id;
+      const turn = required(TurnSchema, await server.request('turn/start', { threadId, input: [{ type: 'text', text: spec.prompt, text_elements: [] }] }, 60_000), 'turn/start');
+      turnId = turn.turn?.id ?? undefined;
       // until the turn completes, the turn is stopped, or the process dies
       const died = server.exited.then(() => {
         if (!abort.signal.aborted) throw new Error(`codex app-server exited during the turn${server.stderr().length ? `: ${truncate(server.stderr().slice(-3).join(' | '), 300)}` : ''}`);
@@ -247,24 +260,25 @@ export class CodexEngine implements Engine {
   }
 
   /** The app-server's own requests: approvals (-> policy / the user) and our team tools. */
-  private async answer(method: string, params: any, spec: TurnSpec, thread: () => string | undefined, mapper: CodexStreamMapper, tools: Map<string, AgentTool>): Promise<unknown> {
-    const ours = !!params?.threadId && params.threadId === thread();
+  private async answer(method: string, params: unknown, spec: TurnSpec, thread: () => string | undefined, mapper: CodexStreamMapper, tools: Map<string, AgentTool>): Promise<unknown> {
+    const req = parsed(RequestSchema, params, {});
+    const ours = !!req.threadId && req.threadId === thread();
     const { cwd, abort } = spec;
     switch (method) {
       case 'item/commandExecution/requestApproval': {
         if (!ours) return { decision: 'decline' };
-        if (params.kind === 'writeStdin') return { decision: 'accept' }; // input to a command already approved
-        const sc = shellCommand(String(params.command ?? ''));
-        const r = await spec.permission(sc.tool, { command: sc.command }, abort.signal, params.reason ?? undefined);
+        if (req.kind === 'writeStdin') return { decision: 'accept' }; // input to a command already approved
+        const sc = shellCommand(String(req.command ?? ''));
+        const r = await spec.permission(sc.tool, { command: sc.command }, abort.signal, req.reason ?? undefined);
         return { decision: r.allow ? 'accept' : r.interrupt ? 'cancel' : 'decline' };
       }
       case 'item/fileChange/requestApproval': {
         if (!ours) return { decision: 'decline' };
-        const paths = mapper.fileChangePaths(String(params.itemId));
-        if (!paths.length && params.grantRoot) paths.push(String(params.grantRoot));
+        const paths = mapper.fileChangePaths(String(req.itemId));
+        if (!paths.length && req.grantRoot) paths.push(String(req.grantRoot));
         if (!paths.length) return { decision: 'decline' };
         for (const p of paths) {
-          const r = await spec.permission('Edit', { file_path: path.resolve(cwd, p) }, abort.signal, params.reason ?? undefined);
+          const r = await spec.permission('Edit', { file_path: path.resolve(cwd, p) }, abort.signal, req.reason ?? undefined);
           if (!r.allow) return { decision: r.interrupt ? 'cancel' : 'decline' };
         }
         return { decision: 'accept' };
@@ -272,16 +286,16 @@ export class CodexEngine implements Engine {
       case 'item/tool/call': {
         const reply = (text: string, success: boolean) => ({ success, contentItems: [{ type: 'inputText', text }] });
         if (!ours) return reply('Not available in this thread.', false);
-        const t = tools.get(String(params.tool));
-        if (!t) return reply(`Unknown tool ${params.tool}. Available: ${[...tools.keys()].join(', ')}`, false);
-        const parsed = z.object(t.shape).safeParse(params.arguments ?? {});
-        if (!parsed.success) return reply(`Invalid arguments for ${t.name}: ${parsed.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ')}`, false);
-        const res = await t.handler(parsed.data);
+        const t = tools.get(String(req.tool));
+        if (!t) return reply(`Unknown tool ${req.tool}. Available: ${[...tools.keys()].join(', ')}`, false);
+        const args = z.object(t.shape).safeParse(req.arguments ?? {});
+        if (!args.success) return reply(`Invalid arguments for ${t.name}: ${args.error.issues.map((i) => `${i.path.join('.') || 'input'}: ${i.message}`).join('; ')}`, false);
+        const res = await t.handler(args.data);
         return reply(res.content.map((c) => c.text).join('\n'), !res.isError);
       }
       case 'item/tool/requestUserInput': {
         const msg = `(Not available in AgentCraft: ask ${userName()} with the ask_user tool instead.)`;
-        return { answers: Object.fromEntries(((params?.questions ?? []) as Array<{ id: string }>).map((q) => [q.id, { answers: [msg] }])) };
+        return { answers: Object.fromEntries((req.questions ?? []).map((q) => [q.id, { answers: [msg] }])) };
       }
       case 'mcpServer/elicitation/request':
         return { action: 'decline', content: null, _meta: null };
