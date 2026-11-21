@@ -3,9 +3,7 @@ import type { Foreman } from '../../foreman.js';
 import { firstLine, headLines, tailLines, truncate } from '../../util/text.js';
 import { relPath, toolActivity } from '../activity.js';
 import type { Role, TurnStats } from '../engine.js';
-
-/* eslint-disable @typescript-eslint/no-explicit-any */
-type Item = { type: string; id: string; [k: string]: any };
+import { StreamParamsSchema, parsed, type Item } from './wire.js';
 
 /**
  * Codex runs a command through a shell wrapper (Windows: `"...\powershell.exe" -Command '...'`,
@@ -73,7 +71,7 @@ export class CodexStreamMapper {
     return Array.isArray(it?.changes) ? it.changes.map((c: { path: string }) => c.path) : [];
   }
 
-  private set(patch: { state?: any; station?: any; activity?: string }): void {
+  private set(patch: Parameters<Foreman['setAgent']>[1]): void {
     const a = this.fm.agent(this.agentId);
     // a pending question/permission keeps the agent at the user
     if (a?.state === 'waiting_user' && patch.state !== 'waiting_user') return;
@@ -86,12 +84,13 @@ export class CodexStreamMapper {
     if (repoId) this.fm.repos.scheduleRefresh(repoId, 1500);
   }
 
-  handle(method: string, params: any): void {
+  handle(method: string, params: unknown): void {
+    const p = parsed(StreamParamsSchema, params, {});
     const fm = this.fm;
     const id = this.agentId;
     switch (method) {
       case 'item/started': {
-        const it = params?.item as Item | undefined;
+        const it = p.item;
         if (!it) break;
         this.items.set(it.id, it);
         if (it.type === 'commandExecution') {
@@ -101,7 +100,7 @@ export class CodexStreamMapper {
           this.set({ state: act.state, station: act.station, activity: act.activity });
           this.refreshSoon();
         } else if (it.type === 'fileChange') {
-          const changes = (Array.isArray(it.changes) ? it.changes : []) as Array<{ path: string; diff?: string; kind?: { type?: string } }>;
+          const changes = it.changes ?? [];
           const files = changes.map((c) => relPath(c.path, this.cwd));
           const act = toolActivity(changes[0]?.kind?.type === 'add' ? 'Write' : 'Edit', { file_path: changes[0]?.path ?? '' }, this.cwd);
           fm.agentLog(id, 'tool', files.length > 1 ? `Edit ${files.slice(0, 4).join(', ')}${files.length > 4 ? ` +${files.length - 4}` : ''}` : act.label);
@@ -113,7 +112,7 @@ export class CodexStreamMapper {
           this.set({ state: act.state, station: act.station, activity: act.activity });
           this.refreshSoon();
         } else if (it.type === 'dynamicToolCall') {
-          const act = toolActivity(String(it.tool ?? '?'), (it.arguments ?? {}) as Record<string, unknown>, this.cwd);
+          const act = toolActivity(String(it.tool ?? '?'), it.arguments ?? {}, this.cwd);
           fm.agentLog(id, 'tool', act.label);
           this.set({ state: act.state, station: act.station, activity: act.activity });
         } else if (it.type === 'reasoning') {
@@ -127,7 +126,7 @@ export class CodexStreamMapper {
         break;
       }
       case 'item/completed': {
-        const it = params?.item as Item | undefined;
+        const it = p.item;
         if (!it) break;
         this.items.set(it.id, { ...this.items.get(it.id), ...it });
         if (it.type === 'agentMessage') {
@@ -149,28 +148,28 @@ export class CodexStreamMapper {
           this.refreshSoon();
         } else if (it.type === 'dynamicToolCall') {
           this.steps++;
-          const text = (Array.isArray(it.contentItems) ? it.contentItems : []).map((c: { text?: string }) => c.text ?? '').join('\n');
+          const text = (it.contentItems ?? []).map((c) => c.text ?? '').join('\n');
           fm.agentLog(id, it.success === false ? 'error' : 'result', it.success === false ? truncate(text || 'tool error', 600) : headLines(text, 3, 300) || 'ok');
         } else if (it.type === 'reasoning') {
-          const summary = (Array.isArray(it.summary) ? it.summary : []).join(' ').trim();
+          const summary = (it.summary ?? []).join(' ').trim();
           if (summary) fm.agentLog(id, 'text', `~ ${truncate(summary.replace(/\s+/g, ' '), 300)}`);
         }
         break;
       }
       case 'thread/tokenUsage/updated': {
-        const last = params?.tokenUsage?.last?.totalTokens;
+        const last = p.tokenUsage?.last?.totalTokens;
         if (typeof last === 'number') this.stats.tokens = (this.stats.tokens ?? 0) + last;
         break;
       }
       case 'error': {
-        const msg = String(params?.error?.message ?? 'error');
-        fm.agentLog(id, 'error', `${params?.willRetry ? 'retrying: ' : ''}${truncate(msg, 400)}`);
-        if (!params?.willRetry) this.stats.errors.push(msg);
-        if (params?.error?.codexErrorInfo === 'unauthorized') this.stats.authFailed = firstLine(msg, 200);
+        const msg = String(p.error?.message ?? 'error');
+        fm.agentLog(id, 'error', `${p.willRetry ? 'retrying: ' : ''}${truncate(msg, 400)}`);
+        if (!p.willRetry) this.stats.errors.push(msg);
+        if (p.error?.codexErrorInfo === 'unauthorized') this.stats.authFailed = firstLine(msg, 200);
         break;
       }
       case 'account/rateLimits/updated': {
-        const r = params?.rateLimits;
+        const r = p.rateLimits;
         if (r?.rateLimitReachedType) {
           fm.agentLog(id, 'error', `rate limited (${r.rateLimitReachedType}); waiting...`);
           this.set({ state: 'blocked', activity: 'rate limited - waiting' });
@@ -178,7 +177,7 @@ export class CodexStreamMapper {
         break;
       }
       case 'turn/completed': {
-        const turn = params?.turn ?? {};
+        const turn = p.turn ?? {};
         const status = String(turn.status ?? 'failed');
         this.stats.subtype = status === 'completed' ? 'success' : status === 'interrupted' ? 'interrupted' : 'error_during_execution';
         this.stats.isError = status !== 'completed';
